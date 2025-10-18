@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Proyecto1_ICM"
+rootProject.name = "SafezonePet"
 include(":app")
  
