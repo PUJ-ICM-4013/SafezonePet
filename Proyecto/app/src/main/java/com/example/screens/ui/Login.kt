@@ -14,9 +14,11 @@ import androidx.compose.ui.unit.dp
 import com.example.screens.ui.components.AppTextField
 import com.example.screens.ui.theme.InputGreen
 import com.example.screens.ui.theme.ScreensTheme
+import com.example.screens.ui.auth.AuthViewModel
 
 @Composable
 fun LoginScreenWithNavigation(
+    viewModel: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onLoginSuccess: () -> Unit,
     onSignupClick: () -> Unit
 ) {
@@ -98,7 +100,9 @@ fun LoginScreenWithNavigation(
                     }
                     else -> {
                         showError = false
-                        onLoginSuccess()
+                        viewModel.login(username.trim(), password){
+                            onLoginSuccess()
+                        }
                     }
                 }
             },
