@@ -1,4 +1,4 @@
-package com.example.screens.ui
+ package com.example.screens.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -101,16 +101,6 @@ fun SignupScreenWithNavigation(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Forgot password?",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { /* Lógica para recuperar contraseña */ }
-        )
 
         Spacer(modifier = Modifier.height(32.dp))
 
