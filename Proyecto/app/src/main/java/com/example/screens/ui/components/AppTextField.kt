@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.example.screens.ui.theme.InputGreen
+import com.example.screens.ui.theme.TextBlack
 
 @Composable
 fun AppTextField(
@@ -31,7 +32,9 @@ fun AppTextField(
             unfocusedIndicatorColor = Color.Transparent,
             focusedIndicatorColor = MaterialTheme.colorScheme.primary,
             cursorColor = MaterialTheme.colorScheme.primary,
-            focusedLabelColor = MaterialTheme.colorScheme.primary
+            focusedLabelColor = MaterialTheme.colorScheme.primary,
+            unfocusedTextColor = TextBlack,
+            focusedTextColor = TextBlack
         )
     )
 }
