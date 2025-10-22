@@ -63,13 +63,6 @@ import com.example.screens.Data.PetLocation
 import com.example.screens.Data.RouteInfo
 
 
-// =============================================================================
-// FUNCIONES DE UTILIDAD PARA MARCADORES CIRCULARES
-// =============================================================================
-
-/**
- * Convierte un Bitmap rectangular en uno circular con bordes suavizados
- */
 fun getCircularBitmap(bitmap: Bitmap): Bitmap {
     val size = minOf(bitmap.width, bitmap.height)
     val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -99,13 +92,6 @@ fun getCircularBitmap(bitmap: Bitmap): Bitmap {
     return output
 }
 
-/**
- * Crea un marcador circular personalizado para mascotas
- * @param context Contexto de Android
- * @param drawableId ID del drawable de la imagen de la mascota
- * @param isInSafeZone Si la mascota está en zona segura (verde) o no (rojo)
- * @param size Tamaño del marcador en píxeles
- */
 fun createCircularMarkerIcon(
     context: Context,
     drawableId: Int,
@@ -135,11 +121,10 @@ fun createCircularMarkerIcon(
     paint.color = android.graphics.Color.argb(80, 0, 0, 0)
     canvas.drawCircle(centerX + 3, centerY + 3, (size + borderSize) / 2f, paint)
 
-    // Borde de color (verde si está en zona segura, rojo si no)
     paint.color = if (isInSafeZone) {
-        android.graphics.Color.parseColor("#4CAF50") // Verde
+        android.graphics.Color.parseColor("#4CAF50") 
     } else {
-        android.graphics.Color.parseColor("#F44336") // Rojo
+        android.graphics.Color.parseColor("#F44336") 
     }
     canvas.drawCircle(centerX, centerY, (size + borderSize) / 2f, paint)
 
@@ -153,11 +138,6 @@ fun createCircularMarkerIcon(
     return BitmapDescriptorFactory.fromBitmap(borderedBitmap)
 }
 
-/**
- * Crea un marcador circular personalizado para la ubicación del usuario
- * @param context Contexto de Android
- * @param size Tamaño del marcador en píxeles
- */
 fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
     val bitmap = Bitmap.createBitmap(size + 20, size + 20, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
@@ -169,24 +149,22 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
         isFilterBitmap = true
     }
 
-    // Sombra
     paint.style = Paint.Style.FILL
     paint.color = android.graphics.Color.argb(50, 0, 0, 0)
     canvas.drawCircle(centerX + 2, centerY + 2, size / 2f, paint)
 
-    // Círculo blanco exterior (borde)
+
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, size / 2f, paint)
 
-    // Círculo azul
+     
     paint.color = android.graphics.Color.parseColor("#2196F3")
     canvas.drawCircle(centerX, centerY, (size / 2f) - 6, paint)
 
-    // Punto central blanco (ubicación exacta)
+    
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, size / 8f, paint)
 
-    // Anillo exterior blanco
     paint.style = Paint.Style.STROKE
     paint.strokeWidth = 3f
     paint.color = android.graphics.Color.WHITE
@@ -195,9 +173,6 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
     return BitmapDescriptorFactory.fromBitmap(bitmap)
 }
 
-// =============================================================================
-// SENSOR DE LUZ PARA MODO OSCURO
-// =============================================================================
 
 @Composable
 fun rememberLightSensor(): Boolean {
@@ -229,9 +204,6 @@ fun rememberLightSensor(): Boolean {
     return isDarkMode
 }
 
-// -----------------------------------------------------------------------------
-// MAPA INTERACTIVO
-// -----------------------------------------------------------------------------
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun InteractiveMapView(
@@ -279,7 +251,7 @@ fun InteractiveMapView(
         )
     }
 
-    // 🎨 Aplicar estilo JSON dinámicamente según el modo oscuro
+    // Aplicar estilo JSON
     LaunchedEffect(isDarkMode) {
         try {
             val styleRes = if (isDarkMode) R.raw.map_style_dark else R.raw.map_style_light
@@ -360,7 +332,6 @@ fun InteractiveMapView(
                 )
             }
 
-            // Marcadores de mascotas con imágenes circulares
             petLocations.forEach { pet ->
                 Marker(
                     state = MarkerState(position = pet.location),
@@ -385,9 +356,6 @@ fun InteractiveMapView(
     }
 }
 
-// -----------------------------------------------------------------------------
-// BARRA DE BÚSQUEDA
-// -----------------------------------------------------------------------------
 @Composable
 fun SearchBar(
     pets: List<PetLocation>,
