@@ -30,6 +30,12 @@ sealed class Screen(val route: String) {
     object GroupDetail : Screen("group_detail/{groupName}") {
         fun createRoute(groupName: String) = "group_detail/$groupName"
     }
+    object Profile : Screen("profile")
+
+    object CreateUser : Screen("user_form?uid={uid}&email={email}") {
+        fun createRoute(uid: String, email: String) =
+            "user_form?uid=$uid&email=${java.net.URLEncoder.encode(email, Charsets.UTF_8.name())}"
+    }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
@@ -83,17 +89,14 @@ fun AppNavigation(
         // Signup Screen
         composable(Screen.Signup.route) {
             SignupScreenWithNavigation(
-                onSignupSuccess = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
+                onSignupSuccess = { uid, email ->
+                    navController.navigate(Screen.CreateUser.createRoute(uid, email)) {
+                        popUpTo(Screen.Signup.route) { inclusive = true }
+                        launchSingleTop = true
                     }
                 },
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                onSignInClick = {
-                    navController.popBackStack()
-                }
+                onBackClick = { navController.popBackStack() },
+                onSignInClick = { navController.popBackStack() }
             )
         }
 
@@ -166,6 +169,37 @@ fun AppNavigation(
                 navController = navController
             )
         }
+
+        composable(
+            route = Screen.CreateUser.route,
+            arguments = listOf(
+                navArgument("uid")   { type = NavType.StringType; nullable = false },
+                navArgument("email") { type = NavType.StringType; nullable = true  }
+            )
+        ) { backStackEntry ->
+            val uid   = backStackEntry.arguments?.getString("uid")!!
+            val email = backStackEntry.arguments?.getString("email") ?: ""
+
+            UserCreateScreenWithNavigation(
+                uid = uid,
+                email = email,
+                onBackClick = { navController.popBackStack() },
+                onSignInClick = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onSuccess = { createdId ->
+                    // Ya tienes el id creado en Mongo → sigue tu flujo
+                    navController.navigate(Screen.Loading.route) {
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
+
 
         // Connect Tracker Screen
         composable(Screen.ConnectTracker.route) {

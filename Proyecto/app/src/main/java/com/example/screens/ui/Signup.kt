@@ -108,7 +108,7 @@ fun ProfilePhotoSelector(
 @Composable
 fun SignupScreenWithNavigation(
     viewModel: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
-    onSignupSuccess: () -> Unit,
+    onSignupSuccess: (uid: String, email: String) -> Unit,
     onBackClick: () -> Unit,
     onSignInClick: () -> Unit
 ) {
@@ -432,9 +432,9 @@ fun SignupScreenWithNavigation(
                     else -> {
                         showError = false
                         isLoading = true
-                        viewModel.signup(email.trim(), password) {
+                        viewModel.signup(email.trim(), password) { firebaseUid ->
                             isLoading = false
-                            onSignupSuccess()
+                            onSignupSuccess(firebaseUid, email.trim())
                         }
                     }
                 }
@@ -471,7 +471,7 @@ fun SignupScreenPreview() {
     ScreensTheme {
         Surface {
             SignupScreenWithNavigation(
-                onSignupSuccess = {},
+                onSignupSuccess = { _, _ -> },
                 onBackClick = {},
                 onSignInClick = {}
             )
