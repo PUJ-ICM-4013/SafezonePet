@@ -2,6 +2,7 @@ package com.example.screens.ui
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -12,12 +13,11 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,26 +39,16 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.navigation.NavController
 import com.example.screens.Data.GeofenceData
-import com.example.screens.Data.LocationHistory
 import com.example.screens.Data.Pet
 import com.example.screens.R
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.geofence.GeofenceHelper
-import com.example.screens.location.LocationRepository
-import com.example.screens.network.DirectionsApiService
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.theme.TextWhite
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.maps.model.*
-import com.google.maps.android.PolyUtil
 import com.google.maps.android.compose.*
-import kotlinx.coroutines.launch
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import com.example.screens.Data.PetLocation
 import com.example.screens.Data.RouteInfo
 
@@ -122,9 +112,9 @@ fun createCircularMarkerIcon(
     canvas.drawCircle(centerX + 3, centerY + 3, (size + borderSize) / 2f, paint)
 
     paint.color = if (isInSafeZone) {
-        android.graphics.Color.parseColor("#4CAF50") 
+        android.graphics.Color.parseColor("#4CAF50")
     } else {
-        android.graphics.Color.parseColor("#F44336") 
+        android.graphics.Color.parseColor("#F44336")
     }
     canvas.drawCircle(centerX, centerY, (size + borderSize) / 2f, paint)
 
@@ -157,11 +147,11 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, size / 2f, paint)
 
-     
+
     paint.color = android.graphics.Color.parseColor("#2196F3")
     canvas.drawCircle(centerX, centerY, (size / 2f) - 6, paint)
 
-    
+
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, size / 8f, paint)
 
@@ -171,6 +161,39 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
     canvas.drawCircle(centerX, centerY, (size / 2f) - 3, paint)
 
     return BitmapDescriptorFactory.fromBitmap(bitmap)
+}
+
+/**
+ * Abre Google Maps con la ruta desde la ubicación del usuario hasta la mascota
+ */
+fun openGoogleMapsRoute(context: Context, origin: LatLng, destination: LatLng, petName: String) {
+    try {
+        // Crear URI para Google Maps con modo de transporte walking (caminando)
+        val uri = Uri.parse(
+            "https://www.google.com/maps/dir/?api=1" +
+                    "&origin=${origin.latitude},${origin.longitude}" +
+                    "&destination=${destination.latitude},${destination.longitude}" +
+                    "&travelmode=walking" +
+                    "&dir_action=navigate"
+        )
+
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+            setPackage("com.google.android.apps.maps")
+        }
+
+        // Verificar si Google Maps está instalado
+        if (intent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(intent)
+            Log.d("GoogleMaps", "Abriendo Google Maps para navegación a $petName")
+        } else {
+            // Si Google Maps no está instalado, abrir en el navegador
+            val browserIntent = Intent(Intent.ACTION_VIEW, uri)
+            context.startActivity(browserIntent)
+            Log.d("GoogleMaps", "Google Maps no instalado, abriendo en navegador")
+        }
+    } catch (e: Exception) {
+        Log.e("GoogleMaps", "Error al abrir Google Maps: ${e.message}", e)
+    }
 }
 
 
@@ -336,6 +359,7 @@ fun InteractiveMapView(
                 Marker(
                     state = MarkerState(position = pet.location),
                     title = pet.pet.name,
+                    snippet = "Toca para ver la ruta",
                     icon = createCircularMarkerIcon(
                         context,
                         pet.pet.imageRes,
@@ -343,7 +367,13 @@ fun InteractiveMapView(
                     ),
                     onClick = {
                         onLocationClick(pet)
-                        true
+                        false // Permite que se muestre el InfoWindow
+                    },
+                    onInfoWindowClick = {
+                        // Abrir Google Maps cuando se toca el InfoWindow
+                        userLocation?.let { origin ->
+                            openGoogleMapsRoute(context, origin, pet.location, pet.pet.name)
+                        }
                     }
                 )
             }
@@ -385,9 +415,6 @@ fun MapPageWithNavigation(
     onConnectClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val directionsApi = remember { DirectionsApiService.create() }
-    val locationRepository = remember { LocationRepository() }
     val geofenceHelper = remember { GeofenceHelper(context) }
     val isDarkMode = rememberLightSensor()
 
@@ -406,7 +433,6 @@ fun MapPageWithNavigation(
     }
 
     var selectedPet by remember { mutableStateOf<PetLocation?>(null) }
-    var routeInfo by remember { mutableStateOf<RouteInfo?>(null) }
     var geofenceEnabled by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -480,46 +506,12 @@ fun MapPageWithNavigation(
                     petLocations = petLocations,
                     userLocation = userLocation,
                     selectedPet = selectedPet,
-                    routeInfo = routeInfo,
+                    routeInfo = null,
                     isDarkMode = isDarkMode,
                     onLocationClick = { pet ->
                         selectedPet = pet
-                        routeInfo = null
-
-                        scope.launch {
-                            try {
-                                val origin = "${userLocation.latitude},${userLocation.longitude}"
-                                val destination = "${pet.location.latitude},${pet.location.longitude}"
-                                val apiKey = "TU_API_KEY"
-
-                                val response = directionsApi.getDirections(origin, destination, apiKey, "driving")
-
-                                if (response.status == "OK" && response.routes.isNotEmpty()) {
-                                    val route = response.routes.first()
-                                    val leg = route.legs.first()
-                                    val decodedPoints = PolyUtil.decode(route.overview_polyline.points)
-
-                                    routeInfo = RouteInfo(
-                                        distance = leg.distance.text,
-                                        duration = leg.duration.text,
-                                        polylinePoints = decodedPoints
-                                    )
-
-                                    val history = LocationHistory(
-                                        petId = pet.pet.name,
-                                        petName = pet.pet.name,
-                                        latitude = pet.location.latitude,
-                                        longitude = pet.location.longitude,
-                                        timestamp = System.currentTimeMillis(),
-                                        isInSafeZone = pet.isInSafeZone,
-                                        address = leg.end_address
-                                    )
-                                    locationRepository.saveLocation(history)
-                                }
-                            } catch (e: Exception) {
-                                Log.e("Route", "Error obteniendo ruta: ${e.localizedMessage}")
-                            }
-                        }
+                        // Abrir Google Maps directamente con la ruta
+                        openGoogleMapsRoute(context, userLocation, pet.location, pet.pet.name)
                     }
                 )
 
@@ -547,7 +539,11 @@ fun MapPageWithNavigation(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clickable { selectedPet = pet }
+                                    .clickable {
+                                        selectedPet = pet
+                                        // Abrir Google Maps con la ruta cuando se hace clic en la lista
+                                        openGoogleMapsRoute(context, userLocation, pet.location, pet.pet.name)
+                                    }
                                     .padding(vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -613,42 +609,6 @@ fun MapPageWithNavigation(
                 }
 
                 Spacer(Modifier.height(80.dp))
-            }
-
-            AnimatedVisibility(
-                visible = routeInfo != null,
-                enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-                exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 80.dp)
-            ) {
-                routeInfo?.let { info ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(0.9f)
-                    ) {
-                        Row(
-                            Modifier
-                                .padding(16.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text("Distancia: ${info.distance}", fontWeight = FontWeight.Bold)
-                                Text("Duración: ${info.duration}")
-                            }
-                            IconButton(onClick = { routeInfo = null }) {
-                                Icon(Icons.Default.Close, contentDescription = "Cerrar")
-                            }
-                        }
-                    }
-                }
             }
         }
     }
