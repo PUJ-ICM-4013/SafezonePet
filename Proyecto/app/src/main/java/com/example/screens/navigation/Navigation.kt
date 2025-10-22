@@ -121,12 +121,6 @@ fun AppNavigation(
                 onConnectClick = {
                     navController.navigate(Screen.ConnectTracker.route)
                 },
-                onNotificationsClick = {
-                    navController.navigate(Screen.Notifications.route)
-                },
-                onLocationHistoryClick = {
-                    navController.navigate(Screen.LocationHistory.route)
-                },
                 navController = navController
             )
         }

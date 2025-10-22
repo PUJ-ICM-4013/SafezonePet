@@ -23,6 +23,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Proyecto1_ICM">
+
+        <!-- Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyA2LICATAgZ384tcwirHKEDF-XrB1jUyo0" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
