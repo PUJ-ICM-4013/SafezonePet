@@ -11,6 +11,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.screens.ui.*
 
+// Definicion de rutas
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Signup : Screen("signup")
@@ -83,7 +84,7 @@ fun AppNavigation(
         composable(Screen.Signup.route) {
             SignupScreenWithNavigation(
                 onSignupSuccess = {
-                    navController.navigate(Screen.Loading.route) {
+                    navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 },
