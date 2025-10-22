@@ -11,7 +11,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.screens.ui.*
 
-// Definición de rutas
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Signup : Screen("signup")
@@ -120,12 +119,6 @@ fun AppNavigation(
                 },
                 onConnectClick = {
                     navController.navigate(Screen.ConnectTracker.route)
-                },
-                onNotificationsClick = {
-                    navController.navigate(Screen.Notifications.route)
-                },
-                onLocationHistoryClick = {
-                    navController.navigate(Screen.LocationHistory.route)
                 },
                 navController = navController
             )
