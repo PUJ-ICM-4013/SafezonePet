@@ -1,5 +1,5 @@
 
-package com.example.screens.Data
+package com.example.screens.data
 
 data class Group(
     val id: Int,

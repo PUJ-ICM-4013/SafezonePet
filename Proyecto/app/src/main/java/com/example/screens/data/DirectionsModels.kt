@@ -1,6 +1,4 @@
-package com.example.screens.Data
-
-import com.google.android.gms.maps.model.LatLng
+package com.example.screens.data
 
 data class DirectionsResponse(
     val routes: List<Route>,

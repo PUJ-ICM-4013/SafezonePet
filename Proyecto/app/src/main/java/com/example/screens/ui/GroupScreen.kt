@@ -29,7 +29,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
-import com.example.screens.Data.Group
+import com.example.screens.data.Group
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.ui.theme.InputGreen
 import com.example.screens.ui.theme.PetSafeGreen

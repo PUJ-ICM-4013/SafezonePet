@@ -1,8 +1,8 @@
-package com.example.screens.ui.auth
+package com.example.screens.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.screens.Data.AuthRepository
+import com.example.screens.repository.AuthRepository
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.State

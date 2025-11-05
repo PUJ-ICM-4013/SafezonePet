@@ -1,4 +1,4 @@
-package com.example.screens.Data
+package com.example.screens.repository
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -15,7 +15,9 @@ class AuthRepository(private val auth: FirebaseAuth = FirebaseAuth.getInstance()
                     if (task.isSuccessful) {
                         cont.resume(auth.currentUser)
                     } else {
-                        cont.resumeWithException(task.exception ?: Exception("Authentication failed"))
+                        cont.resumeWithException(
+                            task.exception ?: Exception("Authentication failed")
+                        )
                     }
                 }
         }

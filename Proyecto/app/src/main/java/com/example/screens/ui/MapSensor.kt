@@ -38,8 +38,8 @@ import coil.compose.AsyncImage
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.navigation.NavController
-import com.example.screens.Data.GeofenceData
-import com.example.screens.Data.Pet
+import com.example.screens.data.GeofenceData
+import com.example.screens.data.Pet
 import com.example.screens.R
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.geofence.GeofenceHelper
@@ -49,8 +49,10 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.maps.model.*
 import com.google.maps.android.compose.*
-import com.example.screens.Data.PetLocation
-import com.example.screens.Data.RouteInfo
+import com.example.screens.data.PetLocation
+import com.example.screens.data.RouteInfo
+import com.example.screens.sensors.rememberLightSensor
+
 
 
 fun getCircularBitmap(bitmap: Bitmap): Bitmap {
@@ -194,37 +196,6 @@ fun openGoogleMapsRoute(context: Context, origin: LatLng, destination: LatLng, p
     } catch (e: Exception) {
         Log.e("GoogleMaps", "Error al abrir Google Maps: ${e.message}", e)
     }
-}
-
-
-@Composable
-fun rememberLightSensor(): Boolean {
-    val context = LocalContext.current
-    var isDarkMode by remember { mutableStateOf(false) }
-
-    DisposableEffect(context) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val lightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
-
-        if (lightSensor != null) {
-            val listener = object : SensorEventListener {
-                override fun onSensorChanged(event: SensorEvent) {
-                    val lux = event.values[0]
-                    isDarkMode = lux < 20
-                }
-
-                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-            }
-
-            sensorManager.registerListener(listener, lightSensor, SensorManager.SENSOR_DELAY_NORMAL)
-            onDispose { sensorManager.unregisterListener(listener) }
-        } else {
-            Log.w("LightSensor", "Light sensor not available on this device")
-            onDispose { }
-        }
-    }
-
-    return isDarkMode
 }
 
 @OptIn(ExperimentalPermissionsApi::class)

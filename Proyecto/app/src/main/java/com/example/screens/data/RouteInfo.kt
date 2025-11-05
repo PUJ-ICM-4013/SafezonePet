@@ -1,4 +1,4 @@
-package com.example.screens.Data
+package com.example.screens.data
 
 import com.google.android.gms.maps.model.LatLng
 

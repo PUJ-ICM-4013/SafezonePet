@@ -32,7 +32,7 @@ import com.example.screens.permission.*
 import com.example.screens.ui.components.AppTextField
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.theme.ScreensTheme
-import com.example.screens.ui.auth.AuthViewModel
+import com.example.screens.viewmodel.AuthViewModel
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*

@@ -1,4 +1,4 @@
-package com.example.screens.Data
+package com.example.screens.data
 
 data class PermissionMessage(
     val title: String,

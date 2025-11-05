@@ -1,6 +1,6 @@
 package com.example.screens.network
 
-import com.example.screens.Data.DirectionsResponse
+import com.example.screens.data.DirectionsResponse
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET

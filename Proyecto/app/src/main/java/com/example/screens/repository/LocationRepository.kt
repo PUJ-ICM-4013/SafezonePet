@@ -1,7 +1,7 @@
-package com.example.screens.location
+package com.example.screens.repository
 
 import android.location.Location
-import com.example.screens.Data.LocationHistory
+import com.example.screens.data.LocationHistory
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
