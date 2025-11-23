@@ -2,7 +2,6 @@ package com.example.screens.ui
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -13,7 +12,6 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +50,8 @@ import com.google.maps.android.compose.*
 import com.example.screens.data.PetLocation
 import com.example.screens.data.RouteInfo
 import com.example.screens.sensors.rememberLightSensor
+import com.example.screens.repository.RouteRepository
+import kotlinx.coroutines.launch
 
 
 
@@ -165,38 +165,6 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
     return BitmapDescriptorFactory.fromBitmap(bitmap)
 }
 
-/**
- * Abre Google Maps con la ruta desde la ubicación del usuario hasta la mascota
- */
-fun openGoogleMapsRoute(context: Context, origin: LatLng, destination: LatLng, petName: String) {
-    try {
-        // Crear URI para Google Maps con modo de transporte walking (caminando)
-        val uri = Uri.parse(
-            "https://www.google.com/maps/dir/?api=1" +
-                    "&origin=${origin.latitude},${origin.longitude}" +
-                    "&destination=${destination.latitude},${destination.longitude}" +
-                    "&travelmode=walking" +
-                    "&dir_action=navigate"
-        )
-
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-            setPackage("com.google.android.apps.maps")
-        }
-
-        // Verificar si Google Maps está instalado
-        if (intent.resolveActivity(context.packageManager) != null) {
-            context.startActivity(intent)
-            Log.d("GoogleMaps", "Abriendo Google Maps para navegación a $petName")
-        } else {
-            // Si Google Maps no está instalado, abrir en el navegador
-            val browserIntent = Intent(Intent.ACTION_VIEW, uri)
-            context.startActivity(browserIntent)
-            Log.d("GoogleMaps", "Google Maps no instalado, abriendo en navegador")
-        }
-    } catch (e: Exception) {
-        Log.e("GoogleMaps", "Error al abrir Google Maps: ${e.message}", e)
-    }
-}
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -204,13 +172,18 @@ fun InteractiveMapView(
     modifier: Modifier = Modifier,
     petLocations: List<PetLocation>,
     userLocation: LatLng?,
+    safeZoneCenter: LatLng?,
     safeZoneRadius: Float = 500f,
     selectedPet: PetLocation? = null,
     routeInfo: RouteInfo? = null,
     isDarkMode: Boolean = false,
-    onLocationClick: (PetLocation) -> Unit = {}
+    onLocationClick: (PetLocation) -> Unit = {},
+    onRouteCalculated: (RouteInfo?) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val routeRepository = remember { RouteRepository() }
+
     val locationPermissions = rememberMultiplePermissionsState(
         listOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -221,7 +194,7 @@ fun InteractiveMapView(
     val defaultLocation = LatLng(4.6097, -74.0817)
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(
-            selectedPet?.location ?: userLocation ?: defaultLocation,
+            selectedPet?.location ?: safeZoneCenter ?: userLocation ?: defaultLocation,
             15f
         )
     }
@@ -310,12 +283,21 @@ fun InteractiveMapView(
             properties = mapProperties,
             uiSettings = uiSettings
         ) {
-            // Ubicación usuario con marcador circular personalizado
+            // Ubicación GPS actual del usuario (marcador azul)
             userLocation?.let {
                 Marker(
                     state = MarkerState(position = it),
-                    title = "Mi ubicación",
+                    title = "Mi ubicación actual",
                     icon = createUserMarkerIcon(context)
+                )
+            }
+
+            // Zona segura (residencia/hogar del usuario)
+            safeZoneCenter?.let {
+                Marker(
+                    state = MarkerState(position = it),
+                    title = "Hogar (Zona Segura)",
+                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
                 )
                 Circle(
                     center = it,
@@ -338,13 +320,23 @@ fun InteractiveMapView(
                     ),
                     onClick = {
                         onLocationClick(pet)
-                        false // Permite que se muestre el InfoWindow
-                    },
-                    onInfoWindowClick = {
-                        // Abrir Google Maps cuando se toca el InfoWindow
+                        // Calcular ruta con OSRM cuando se toca el marcador
                         userLocation?.let { origin ->
-                            openGoogleMapsRoute(context, origin, pet.location, pet.pet.name)
+                            scope.launch {
+                                val result = routeRepository.getRoute(origin, pet.location)
+                                result.fold(
+                                    onSuccess = { route ->
+                                        onRouteCalculated(route)
+                                        Log.d("MapSensor", "Ruta calculada: ${route.distance}, ${route.duration}")
+                                    },
+                                    onFailure = { error ->
+                                        Log.e("MapSensor", "Error calculando ruta: ${error.message}")
+                                        onRouteCalculated(null)
+                                    }
+                                )
+                            }
                         }
+                        false // Permite que se muestre el InfoWindow
                     }
                 )
             }
@@ -378,7 +370,7 @@ fun SearchBar(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun MapPageWithNavigation(
     navController: NavController,
@@ -389,7 +381,38 @@ fun MapPageWithNavigation(
     val geofenceHelper = remember { GeofenceHelper(context) }
     val isDarkMode = rememberLightSensor()
 
-    val userLocation = LatLng(4.6097, -74.0817)
+    // Obtener ubicación GPS real del dispositivo (para trazar rutas)
+    val locationPermissions = rememberMultiplePermissionsState(
+        listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    )
+
+    var userLocation by remember { mutableStateOf<LatLng?>(null) }
+    val fusedLocationClient = remember {
+        com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    // Zona segura (residencia del usuario)
+    val safeZoneCenter = remember { LatLng(4.6097, -74.0817) } // Coordenadas del hogar
+    val safeZoneRadius = 500f
+
+    LaunchedEffect(locationPermissions.allPermissionsGranted) {
+        if (locationPermissions.allPermissionsGranted) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                    location?.let {
+                        userLocation = LatLng(it.latitude, it.longitude)
+                        Log.d("MapSensor", "Ubicación GPS del dispositivo obtenida: ${it.latitude}, ${it.longitude}")
+                    }
+                }
+            } catch (e: SecurityException) {
+                Log.e("MapSensor", "Error obteniendo ubicación GPS: ${e.message}")
+            }
+        }
+    }
+
     val pets = listOf(
         Pet("Buddy", R.drawable.buddy),
         Pet("Max", R.drawable.max),
@@ -404,6 +427,7 @@ fun MapPageWithNavigation(
     }
 
     var selectedPet by remember { mutableStateOf<PetLocation?>(null) }
+    var currentRoute by remember { mutableStateOf<RouteInfo?>(null) }
     var geofenceEnabled by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -424,11 +448,12 @@ fun MapPageWithNavigation(
                     onClick = {
                         geofenceEnabled = !geofenceEnabled
                         if (geofenceEnabled) {
+                            // Geofence se crea en la zona segura (hogar)
                             val geofenceData = GeofenceData(
                                 id = "safezone",
-                                latitude = userLocation.latitude,
-                                longitude = userLocation.longitude,
-                                radius = 500f,
+                                latitude = safeZoneCenter.latitude,
+                                longitude = safeZoneCenter.longitude,
+                                radius = safeZoneRadius,
                                 petId = "zona",
                                 petName = "zona segura"
                             )
@@ -476,17 +501,73 @@ fun MapPageWithNavigation(
                 InteractiveMapView(
                     petLocations = petLocations,
                     userLocation = userLocation,
+                    safeZoneCenter = safeZoneCenter,
+                    safeZoneRadius = safeZoneRadius,
                     selectedPet = selectedPet,
-                    routeInfo = null,
+                    routeInfo = currentRoute,
                     isDarkMode = isDarkMode,
                     onLocationClick = { pet ->
                         selectedPet = pet
-                        // Abrir Google Maps directamente con la ruta
-                        openGoogleMapsRoute(context, userLocation, pet.location, pet.pet.name)
+                    },
+                    onRouteCalculated = { route ->
+                        currentRoute = route
                     }
                 )
 
                 Spacer(Modifier.height(16.dp))
+
+                // Información de la ruta calculada
+                currentRoute?.let { route ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = PetSafeGreen.copy(alpha = 0.9f)
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Ruta a ${selectedPet?.pet?.name ?: "mascota"}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TextWhite,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Row {
+                                    Icon(
+                                        Icons.Default.DirectionsWalk,
+                                        contentDescription = null,
+                                        tint = TextWhite,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = "${route.distance} • ${route.duration}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextWhite
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = { currentRoute = null }
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Cerrar ruta",
+                                    tint = TextWhite
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -512,8 +593,6 @@ fun MapPageWithNavigation(
                                     .fillMaxWidth()
                                     .clickable {
                                         selectedPet = pet
-                                        // Abrir Google Maps con la ruta cuando se hace clic en la lista
-                                        openGoogleMapsRoute(context, userLocation, pet.location, pet.pet.name)
                                     }
                                     .padding(vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
