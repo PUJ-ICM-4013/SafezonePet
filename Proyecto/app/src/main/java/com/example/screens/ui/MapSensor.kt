@@ -177,6 +177,7 @@ fun InteractiveMapView(
     selectedPet: PetLocation? = null,
     routeInfo: RouteInfo? = null,
     isDarkMode: Boolean = false,
+    userProfile: com.example.screens.data.UserProfile? = null,
     onLocationClick: (PetLocation) -> Unit = {},
     onRouteCalculated: (RouteInfo?) -> Unit = {}
 ) {
@@ -292,11 +293,16 @@ fun InteractiveMapView(
                 )
             }
 
-            // Zona segura (residencia/hogar del usuario)
+            // Zona segura (dinámica según tipo de usuario)
             safeZoneCenter?.let {
+                val markerTitle = when (userProfile?.userType) {
+                    com.example.screens.data.UserType.OWNER -> "Hogar (Zona Segura)"
+                    com.example.screens.data.UserType.WALKER -> "Mi Ubicación (Zona Móvil)"
+                    else -> "Zona Segura"
+                }
                 Marker(
                     state = MarkerState(position = it),
-                    title = "Hogar (Zona Segura)",
+                    title = markerTitle,
                     icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
                 )
                 Circle(
@@ -374,6 +380,7 @@ fun SearchBar(
 @Composable
 fun MapPageWithNavigation(
     navController: NavController,
+    userProfile: com.example.screens.data.UserProfile? = null,
     onSettingsClick: () -> Unit,
     onConnectClick: () -> Unit
 ) {
@@ -394,8 +401,20 @@ fun MapPageWithNavigation(
         com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
     }
 
-    // Zona segura (residencia del usuario)
-    val safeZoneCenter = remember { LatLng(4.6097, -74.0817) } // Coordenadas del hogar
+    // Zona segura dinámica según el tipo de usuario
+    val safeZoneCenter = remember(userProfile, userLocation) {
+        when (userProfile?.userType) {
+            com.example.screens.data.UserType.OWNER -> {
+                // Dueño
+                userProfile.homeLocation ?: LatLng(4.6097, -74.0817)
+            }
+            com.example.screens.data.UserType.WALKER -> {
+                // Paseador
+                userLocation ?: LatLng(4.6097, -74.0817)
+            }
+            else -> LatLng(4.6097, -74.0817) // Default fallback
+        }
+    }
     val safeZoneRadius = 500f
 
     LaunchedEffect(locationPermissions.allPermissionsGranted) {
@@ -418,12 +437,53 @@ fun MapPageWithNavigation(
         Pet("Max", R.drawable.max),
         Pet("Charlie", R.drawable.charlie)
     )
-    val petLocations = remember {
-        listOf(
-            PetLocation(pets[0], LatLng(4.6097, -74.0817), true, "Hace 5 min"),
-            PetLocation(pets[1], LatLng(4.6110, -74.0830), true, "Hace 10 min"),
-            PetLocation(pets[2], LatLng(4.6150, -74.0850), false, "Hace 2 min")
+
+    // Repositorio para calcular distancias
+    val locationRepository = remember { com.example.screens.repository.LocationRepository() }
+
+    // Calcular dinámicamente si cada mascota está en zona segura
+    // IMPORTANTE: se recalcula cuando cambia safeZoneCenter (para WALKER cambia con userLocation)
+    val petLocations = remember(safeZoneCenter, safeZoneRadius, userLocation, userProfile?.userType) {
+        val petCoordinates = listOf(
+            LatLng(4.6097, -74.0817), // Buddy - centro de zona segura
+            LatLng(4.6110, -74.0830), // Max - cerca pero dentro
+            LatLng(4.6150, -74.0850)  // Charlie - fuera de zona segura
         )
+
+        petCoordinates.mapIndexed { index, petLocation ->
+            val isInZone = safeZoneCenter?.let { center ->
+                val inZone = locationRepository.isInSafeZone(petLocation, center, safeZoneRadius)
+
+                // Calcular distancia para debug
+                val distance = FloatArray(1)
+                android.location.Location.distanceBetween(
+                    petLocation.latitude, petLocation.longitude,
+                    center.latitude, center.longitude,
+                    distance
+                )
+
+                Log.d("MapSensor",
+                    "Pet: ${pets[index].name}, " +
+                    "Distancia: ${distance[0].toInt()}m, " +
+                    "Radio: ${safeZoneRadius.toInt()}m, " +
+                    "En zona: $inZone, " +
+                    "UserType: ${userProfile?.userType}"
+                )
+
+                inZone
+            } ?: false
+
+            PetLocation(
+                pet = pets[index],
+                location = petLocation,
+                isInSafeZone = isInZone,
+                lastUpdate = when(index) {
+                    0 -> "Hace 5 min"
+                    1 -> "Hace 10 min"
+                    else -> "Hace 2 min"
+                }
+            )
+        }
     }
 
     var selectedPet by remember { mutableStateOf<PetLocation?>(null) }
@@ -506,6 +566,7 @@ fun MapPageWithNavigation(
                     selectedPet = selectedPet,
                     routeInfo = currentRoute,
                     isDarkMode = isDarkMode,
+                    userProfile = userProfile,
                     onLocationClick = { pet ->
                         selectedPet = pet
                     },

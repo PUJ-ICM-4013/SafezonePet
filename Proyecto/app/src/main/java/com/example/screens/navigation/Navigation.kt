@@ -3,6 +3,8 @@ package com.example.screens.navigation
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -38,6 +40,11 @@ fun AppNavigation(
     navController: NavHostController = rememberNavController(),
     startDestination: String = Screen.Login.route
 ) {
+    // ViewModel compartido para mantener el estado del usuario en toda la app
+    val authViewModel: com.example.screens.viewmodel.AuthViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel()
+    val userProfile by authViewModel.currentUserProfile.collectAsState()
+
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -69,6 +76,7 @@ fun AppNavigation(
         // Login Screen
         composable(Screen.Login.route) {
             LoginScreenWithNavigation(
+                viewModel = authViewModel,
                 onLoginSuccess = {
                     navController.navigate(Screen.Loading.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
@@ -83,6 +91,7 @@ fun AppNavigation(
         // Signup Screen
         composable(Screen.Signup.route) {
             SignupScreenWithNavigation(
+                viewModel = authViewModel,
                 onSignupSuccess = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
@@ -115,6 +124,7 @@ fun AppNavigation(
         // Map Screen
         composable(Screen.Map.route) {
             MapPageWithNavigation(
+                userProfile = userProfile,
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
                 },

@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -115,6 +116,10 @@ fun SignupScreenWithNavigation(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
+    var homeAddress by remember { mutableStateOf("") }
+    var selectedUserType by remember { mutableStateOf(com.example.screens.data.UserType.OWNER) }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
@@ -363,6 +368,124 @@ fun SignupScreenWithNavigation(
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Selector de tipo de usuario
+        Text(
+            text = "I am a:",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.align(Alignment.Start)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Botón Dueño
+            OutlinedButton(
+                onClick = { selectedUserType = com.example.screens.data.UserType.OWNER },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = if (selectedUserType == com.example.screens.data.UserType.OWNER)
+                        PetSafeGreen
+                    else
+                        MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (selectedUserType == com.example.screens.data.UserType.OWNER)
+                        Color.Black
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    width = if (selectedUserType == com.example.screens.data.UserType.OWNER) 3.dp else 2.dp,
+                    color = if (selectedUserType == com.example.screens.data.UserType.OWNER)
+                        PetSafeGreen
+                    else
+                        MaterialTheme.colorScheme.outline
+                )
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "🏠",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Text(
+                        text = "Owner",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (selectedUserType == com.example.screens.data.UserType.OWNER)
+                            FontWeight.Bold
+                        else
+                            FontWeight.Normal
+                    )
+                }
+            }
+
+            // Botón Paseador
+            OutlinedButton(
+                onClick = { selectedUserType = com.example.screens.data.UserType.WALKER },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = if (selectedUserType == com.example.screens.data.UserType.WALKER)
+                        PetSafeGreen
+                    else
+                        MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (selectedUserType == com.example.screens.data.UserType.WALKER)
+                        Color.Black
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    width = if (selectedUserType == com.example.screens.data.UserType.WALKER) 3.dp else 2.dp,
+                    color = if (selectedUserType == com.example.screens.data.UserType.WALKER)
+                        PetSafeGreen
+                    else
+                        MaterialTheme.colorScheme.outline
+                )
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "🚶",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Text(
+                        text = "Walker",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (selectedUserType == com.example.screens.data.UserType.WALKER)
+                            FontWeight.Bold
+                        else
+                            FontWeight.Normal
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = selectedUserType.getDescription(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            modifier = Modifier.align(Alignment.Start)
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        AppTextField(
+            value = name,
+            onValueChange = {
+                name = it
+                showError = false
+            },
+            label = { Text("Full Name") }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         AppTextField(
             value = email,
             onValueChange = {
@@ -370,6 +493,17 @@ fun SignupScreenWithNavigation(
                 showError = false
             },
             label = { Text("Email") }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        AppTextField(
+            value = phoneNumber,
+            onValueChange = {
+                phoneNumber = it
+                showError = false
+            },
+            label = { Text("Phone Number") }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -394,6 +528,29 @@ fun SignupScreenWithNavigation(
             label = { Text("Confirm password") }
         )
 
+        // Campo de dirección solo para OWNER
+        if (selectedUserType == com.example.screens.data.UserType.OWNER) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            AppTextField(
+                value = homeAddress,
+                onValueChange = {
+                    homeAddress = it
+                    showError = false
+                },
+                label = { Text("Home Address") }
+            )
+
+            Text(
+                text = "This will be your pet's safe zone center",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp)
+            )
+        }
+
         if (showError) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -409,6 +566,10 @@ fun SignupScreenWithNavigation(
         Button(
             onClick = {
                 when {
+                    name.isBlank() -> {
+                        showError = true
+                        errorMessage = "Please enter your name"
+                    }
                     email.isBlank() -> {
                         showError = true
                         errorMessage = "Please enter an email"
@@ -416,6 +577,10 @@ fun SignupScreenWithNavigation(
                     !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> {
                         showError = true
                         errorMessage = "Please enter a valid email"
+                    }
+                    phoneNumber.isBlank() -> {
+                        showError = true
+                        errorMessage = "Please enter your phone number"
                     }
                     password.isBlank() -> {
                         showError = true
@@ -429,12 +594,37 @@ fun SignupScreenWithNavigation(
                         showError = true
                         errorMessage = "Passwords do not match"
                     }
+                    selectedUserType == com.example.screens.data.UserType.OWNER && homeAddress.isBlank() -> {
+                        showError = true
+                        errorMessage = "Please enter your home address"
+                    }
                     else -> {
                         showError = false
                         isLoading = true
-                        viewModel.signup(email.trim(), password) {
+
+                        // Geocodificar dirección a LatLng (mock por ahora, actualizar con API real después)
+                        val homeLocation = if (selectedUserType == com.example.screens.data.UserType.OWNER) {
+                            // implementar la geocodificación real
+                            // Por ahora usamos coordenadas de Bogotá como placeholder
+                            com.google.android.gms.maps.model.LatLng(4.6097, -74.0817)
+                        } else null
+
+                        viewModel.signup(
+                            email = email.trim(),
+                            password = password,
+                            name = name.trim(),
+                            userType = selectedUserType,
+                            homeLocation = homeLocation,
+                            homeAddress = if (selectedUserType == com.example.screens.data.UserType.OWNER) homeAddress else "",
+                            phoneNumber = phoneNumber.trim()
+                        ) { userProfile ->
                             isLoading = false
-                            onSignupSuccess()
+                            if (userProfile != null) {
+                                onSignupSuccess()
+                            } else {
+                                showError = true
+                                errorMessage = viewModelError ?: "Signup failed"
+                            }
                         }
                     }
                 }

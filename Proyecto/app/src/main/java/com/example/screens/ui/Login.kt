@@ -99,8 +99,13 @@ fun LoginScreenWithNavigation(
                     }
                     else -> {
                         showError = false
-                        viewModel.login(username.trim(), password){
-                            onLoginSuccess()
+                        viewModel.login(username.trim(), password) { userProfile ->
+                            if (userProfile != null) {
+                                onLoginSuccess()
+                            } else {
+                                showError = true
+                                errorMessage = "Login failed. Please check your credentials."
+                            }
                         }
                     }
                 }
