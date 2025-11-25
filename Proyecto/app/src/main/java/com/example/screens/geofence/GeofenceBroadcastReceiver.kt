@@ -1,26 +1,21 @@
 package com.example.screens.geofence
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import com.example.screens.MainActivity
-import com.example.screens.R
+import com.example.screens.notifications.NotificationHelper
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.GeofencingEvent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "GeofenceReceiver"
-        private const val CHANNEL_ID = "geofence_alerts"
-        private const val NOTIFICATION_ID = 1001
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -38,76 +33,74 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         }
 
         val geofenceTransition = geofencingEvent.geofenceTransition
+        val triggeringGeofences = geofencingEvent.triggeringGeofences
 
-        if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
-            val triggeringGeofences = geofencingEvent.triggeringGeofences
+        if (triggeringGeofences.isNullOrEmpty()) {
+            Log.w(TAG, "No triggering geofences found")
+            return
+        }
 
-            triggeringGeofences?.forEach { geofence ->
-                val petName = geofence.requestId
-                sendNotification(context, petName)
-                Log.d(TAG, "$petName salió de la zona segura")
+        val notificationHelper = NotificationHelper(context)
+
+        when (geofenceTransition) {
+            Geofence.GEOFENCE_TRANSITION_EXIT -> {
+                triggeringGeofences.forEach { geofence ->
+                    val petName = geofence.requestId
+
+                    // Enviar notificación usando el NotificationHelper
+                    notificationHelper.sendGeofenceExitNotification(petName)
+
+                    // Guardar evento en historial (usando coroutine para operaciones asíncronas)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        saveLocationEvent(context, petName, isInSafeZone = false)
+                    }
+
+                    Log.d(TAG, "$petName salió de la zona segura")
+                }
             }
-        } else if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER) {
-            val triggeringGeofences = geofencingEvent.triggeringGeofences
 
-            triggeringGeofences?.forEach { geofence ->
-                val petName = geofence.requestId
-                sendNotification(context, petName, isEntering = true)
-                Log.d(TAG, "$petName entró a la zona segura")
+            Geofence.GEOFENCE_TRANSITION_ENTER -> {
+                triggeringGeofences.forEach { geofence ->
+                    val petName = geofence.requestId
+
+                    // Enviar notificación de regreso
+                    notificationHelper.sendGeofenceEnterNotification(petName)
+
+                    // Guardar evento en historial
+                    CoroutineScope(Dispatchers.IO).launch {
+                        saveLocationEvent(context, petName, isInSafeZone = true)
+                    }
+
+                    Log.d(TAG, "$petName entró a la zona segura")
+                }
+            }
+
+            else -> {
+                Log.w(TAG, "Transición de geofence desconocida: $geofenceTransition")
             }
         }
     }
 
-    private fun sendNotification(context: Context, petName: String, isEntering: Boolean = false) {
-        createNotificationChannel(context)
+    /**
+     * Guarda el evento de ubicación en el historial
+     */
+    private suspend fun saveLocationEvent(context: Context, petName: String, isInSafeZone: Boolean) {
+        try {
+            val locationRepository = com.example.screens.repository.LocationRepository()
+            val locationHistory = com.example.screens.data.LocationHistory(
+                petId = petName.hashCode().toString(),
+                petName = petName,
+                latitude = 0.0, // Se actualizaría con la ubicación real del GPS
+                longitude = 0.0,
+                timestamp = System.currentTimeMillis(),
+                isInSafeZone = isInSafeZone,
+                address = if (isInSafeZone) "Zona Segura" else "Fuera de zona segura"
+            )
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val title = if (isEntering) {
-            "🟢 $petName está de vuelta"
-        } else {
-            "⚠️ $petName salió de la zona segura"
-        }
-
-        val message = if (isEntering) {
-            "$petName ha regresado a la zona segura"
-        } else {
-            "¡Alerta! $petName ha salido de la zona segura. Revisa su ubicación."
-        }
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun createNotificationChannel(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Alertas de Zona Segura"
-            val descriptionText = "Notificaciones cuando las mascotas salen de la zona segura"
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-            }
-
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            locationRepository.saveLocation(locationHistory)
+            Log.d(TAG, "Evento de ubicación guardado para $petName")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al guardar evento de ubicación: ${e.message}", e)
         }
     }
 }
