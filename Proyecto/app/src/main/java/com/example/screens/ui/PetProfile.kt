@@ -30,14 +30,18 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
 import com.example.screens.R
+import com.example.screens.data.PetData
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.permission.*
+import com.example.screens.repository.PetRepository
 import com.example.screens.ui.components.AppTextField
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.theme.ScreensTheme
+import com.google.firebase.auth.FirebaseAuth
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.UUID
 
 @Composable
 fun ProfileHeader(
@@ -141,11 +145,11 @@ fun PetProfilePageWithNavigation(
 
 @Composable
 fun PetProfileScreen(modifier: Modifier = Modifier) {
-    var petName by remember { mutableStateOf("Buddy") }
-    var breed by remember { mutableStateOf("Chiguauga") }
-    var age by remember { mutableStateOf("2") }
-    var vet by remember { mutableStateOf("Dr. Smith") }
-    var address by remember { mutableStateOf("123 Vet Street") }
+    var petName by remember { mutableStateOf("") }
+    var breed by remember { mutableStateOf("") }
+    var age by remember { mutableStateOf("") }
+    var vet by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
     var profileImageUri by remember { mutableStateOf<Uri?>(null) }
     var tempCameraUri by remember { mutableStateOf<Uri?>(null) } // URI temporal para cámara
     var showImageSourceDialog by remember { mutableStateOf(false) }
@@ -153,8 +157,12 @@ fun PetProfileScreen(modifier: Modifier = Modifier) {
     var showGalleryRationale by remember { mutableStateOf(false) }
     var showCameraDenied by remember { mutableStateOf(false) }
     var showGalleryDenied by remember { mutableStateOf(false) }
+    var showSuccessMessage by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val petRepository = remember { PetRepository() }
+    val currentUser = FirebaseAuth.getInstance().currentUser
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -391,13 +399,65 @@ fun PetProfileScreen(modifier: Modifier = Modifier) {
 
         Button(
             onClick = {
-                println("Profile Saved!")
+                if (currentUser != null && petName.isNotBlank()) {
+                    isSaving = true
+
+                    val petData = PetData(
+                        petId = UUID.randomUUID().toString(),
+                        ownerId = currentUser.uid,
+                        name = petName,
+                        breed = breed,
+                        age = age,
+                        imageUrl = profileImageUri?.toString() ?: "",
+                        veterinarian = vet,
+                        vetAddress = address,
+                        createdAt = System.currentTimeMillis()
+                    )
+
+                    petRepository.savePet(
+                        pet = petData,
+                        onSuccess = {
+                            isSaving = false
+                            showSuccessMessage = true
+                            android.util.Log.d("PetProfile", "✅ Mascota guardada: ${petData.name}")
+                        },
+                        onError = { error ->
+                            isSaving = false
+                            android.util.Log.e("PetProfile", "❌ Error: $error")
+                        }
+                    )
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
+                .height(50.dp),
+            enabled = !isSaving && petName.isNotBlank()
         ) {
-            Text("Save Changes", style = MaterialTheme.typography.labelLarge)
+            if (isSaving) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = Color.White
+                )
+            } else {
+                Text("Save Pet", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+
+        if (showSuccessMessage) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "✅ Mascota guardada exitosamente!",
+                color = PetSafeGreen,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+    }
+
+    // Diálogo de éxito
+    if (showSuccessMessage) {
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(3000)
+            showSuccessMessage = false
         }
     }
 }

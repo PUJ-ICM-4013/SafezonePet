@@ -1,13 +1,14 @@
 {
   "project_info": {
-    "project_number": "1035024461325",
-    "project_id": "safezonepet",
-    "storage_bucket": "safezonepet.firebasestorage.app"
+    "project_number": "274734512828",
+    "firebase_url": "https://entregafinal-f71fc-default-rtdb.firebaseio.com",
+    "project_id": "entregafinal-f71fc",
+    "storage_bucket": "entregafinal-f71fc.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1035024461325:android:d5244ad9598a9a57c3ef44",
+        "mobilesdk_app_id": "1:274734512828:android:83950c07d4254377ff6eb9",
         "android_client_info": {
           "package_name": "com.example.screens"
         }
@@ -15,7 +16,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCC1gm-n1oo5QrRTHwEv1YMRaBoRNxvidE"
+          "current_key": "AIzaSyC_utIhVsRFxrXEHtSwAwEtTY_i8pxtvBQ"
         }
       ],
       "services": {

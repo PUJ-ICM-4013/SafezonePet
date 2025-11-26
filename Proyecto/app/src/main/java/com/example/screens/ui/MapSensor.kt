@@ -8,11 +8,6 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
-import android.util.Log
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -52,9 +47,17 @@ import com.example.screens.data.RouteInfo
 import com.example.screens.sensors.rememberLightSensor
 import com.example.screens.repository.RouteRepository
 import kotlinx.coroutines.launch
+import android.util.Log
+import kotlinx.coroutines.delay
 
+// ============================================================================
+// IMPORTAR REALTIME DATABASE Y NOTIFICACIONES
+// ============================================================================
+import com.example.screens.repository.RealtimeLocationRepository
+import com.example.screens.data.RealtimeLocation
+import com.example.screens.notifications.NotificationHelper
 
-
+// Funciones auxiliares (sin cambios)
 fun getCircularBitmap(bitmap: Bitmap): Bitmap {
     val size = minOf(bitmap.width, bitmap.height)
     val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -74,7 +77,6 @@ fun getCircularBitmap(bitmap: Bitmap): Bitmap {
 
     paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
 
-    // Centrar la imagen si no es cuadrada
     val left = (bitmap.width - size) / 2f
     val top = (bitmap.height - size) / 2f
     val srcRect = Rect(left.toInt(), top.toInt(), (left + size).toInt(), (top + size).toInt())
@@ -96,7 +98,6 @@ fun createCircularMarkerIcon(
 
     val circularBitmap = getCircularBitmap(bitmap)
 
-    // Crear bitmap con borde de color
     val borderSize = 14
     val borderedBitmap = Bitmap.createBitmap(size + borderSize * 2, size + borderSize * 2, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(borderedBitmap)
@@ -108,7 +109,6 @@ fun createCircularMarkerIcon(
         isFilterBitmap = true
     }
 
-    // Sombra
     paint.style = Paint.Style.FILL
     paint.color = android.graphics.Color.argb(80, 0, 0, 0)
     canvas.drawCircle(centerX + 3, centerY + 3, (size + borderSize) / 2f, paint)
@@ -120,11 +120,9 @@ fun createCircularMarkerIcon(
     }
     canvas.drawCircle(centerX, centerY, (size + borderSize) / 2f, paint)
 
-    // Borde blanco interno
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, (size + 4) / 2f, paint)
 
-    // Dibujar la imagen circular encima
     canvas.drawBitmap(circularBitmap, borderSize.toFloat(), borderSize.toFloat(), null)
 
     return BitmapDescriptorFactory.fromBitmap(borderedBitmap)
@@ -145,14 +143,11 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
     paint.color = android.graphics.Color.argb(50, 0, 0, 0)
     canvas.drawCircle(centerX + 2, centerY + 2, size / 2f, paint)
 
-
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, size / 2f, paint)
 
-
     paint.color = android.graphics.Color.parseColor("#2196F3")
     canvas.drawCircle(centerX, centerY, (size / 2f) - 6, paint)
-
 
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, size / 8f, paint)
@@ -164,7 +159,6 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
 
     return BitmapDescriptorFactory.fromBitmap(bitmap)
 }
-
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -219,7 +213,6 @@ fun InteractiveMapView(
         )
     }
 
-    // Aplicar estilo JSON
     LaunchedEffect(isDarkMode) {
         try {
             val styleRes = if (isDarkMode) R.raw.map_style_dark else R.raw.map_style_light
@@ -284,7 +277,6 @@ fun InteractiveMapView(
             properties = mapProperties,
             uiSettings = uiSettings
         ) {
-            // Ubicación GPS actual del usuario (marcador azul)
             userLocation?.let {
                 Marker(
                     state = MarkerState(position = it),
@@ -293,7 +285,6 @@ fun InteractiveMapView(
                 )
             }
 
-            // Zona segura (dinámica según tipo de usuario)
             safeZoneCenter?.let {
                 val markerTitle = when (userProfile?.userType) {
                     com.example.screens.data.UserType.OWNER -> "Hogar (Zona Segura)"
@@ -326,7 +317,6 @@ fun InteractiveMapView(
                     ),
                     onClick = {
                         onLocationClick(pet)
-                        // Calcular ruta con OSRM cuando se toca el marcador
                         userLocation?.let { origin ->
                             scope.launch {
                                 val result = routeRepository.getRoute(origin, pet.location)
@@ -342,12 +332,11 @@ fun InteractiveMapView(
                                 )
                             }
                         }
-                        false // Permite que se muestre el InfoWindow
+                        false
                     }
                 )
             }
 
-            // Dibujar ruta
             routeInfo?.polylinePoints?.takeIf { it.isNotEmpty() }?.let {
                 Polyline(points = it, color = PetSafeGreen, width = 10f)
             }
@@ -376,6 +365,16 @@ fun SearchBar(
     )
 }
 
+fun formatTimestamp(timestamp: Long): String {
+    val diff = System.currentTimeMillis() - timestamp
+    val minutes = diff / 60000
+    return when {
+        minutes < 1 -> "Ahora"
+        minutes < 60 -> "Hace $minutes min"
+        else -> "Hace ${minutes/60} h"
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun MapPageWithNavigation(
@@ -385,10 +384,27 @@ fun MapPageWithNavigation(
     onConnectClick: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val geofenceHelper = remember { GeofenceHelper(context) }
     val isDarkMode = rememberLightSensor()
 
-    // Obtener ubicación GPS real del dispositivo (para trazar rutas)
+    val realtimeRepo = remember { RealtimeLocationRepository() }
+    val petRepo = remember { com.example.screens.repository.PetRepository() }
+
+    // Estado para ubicaciones en tiempo real desde Firebase
+    var realtimeLocations by remember { mutableStateOf<List<RealtimeLocation>>(emptyList()) }
+    var userPets by remember { mutableStateOf<List<com.example.screens.data.PetData>>(emptyList()) }
+
+    // Control de simulación
+    var isSimulationRunning by remember { mutableStateOf(false) }
+
+    // Sistema de notificaciones
+    val notificationHelper = remember { NotificationHelper(context) }
+
+    // Rastrear estado previo de cada mascota (para detectar cambios)
+    val previousSafeZoneState = remember { mutableStateMapOf<String, Boolean>() }
+
+    // Obtener ubicación GPS real del dispositivo
     val locationPermissions = rememberMultiplePermissionsState(
         listOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -405,14 +421,12 @@ fun MapPageWithNavigation(
     val safeZoneCenter = remember(userProfile, userLocation) {
         when (userProfile?.userType) {
             com.example.screens.data.UserType.OWNER -> {
-                // Dueño
                 userProfile.homeLocation ?: LatLng(4.6097, -74.0817)
             }
             com.example.screens.data.UserType.WALKER -> {
-                // Paseador
                 userLocation ?: LatLng(4.6097, -74.0817)
             }
-            else -> LatLng(4.6097, -74.0817) // Default fallback
+            else -> LatLng(4.6097, -74.0817)
         }
     }
     val safeZoneRadius = 500f
@@ -423,7 +437,7 @@ fun MapPageWithNavigation(
                 fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                     location?.let {
                         userLocation = LatLng(it.latitude, it.longitude)
-                        Log.d("MapSensor", "Ubicación GPS del dispositivo obtenida: ${it.latitude}, ${it.longitude}")
+                        Log.d("MapSensor", "📍 Ubicación GPS: ${it.latitude}, ${it.longitude}")
                     }
                 }
             } catch (e: SecurityException) {
@@ -432,56 +446,170 @@ fun MapPageWithNavigation(
         }
     }
 
-    val pets = listOf(
-        Pet("Buddy", R.drawable.buddy),
-        Pet("Max", R.drawable.max),
-        Pet("Charlie", R.drawable.charlie)
-    )
+    val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
 
-    // Repositorio para calcular distancias
-    val locationRepository = remember { com.example.screens.repository.LocationRepository() }
+    LaunchedEffect(currentUser) {
+        currentUser?.let { user ->
+            Log.d("MapSensor", "🐕 Cargando mascotas del usuario ${user.uid}")
+            petRepo.getPetsByOwner(
+                ownerId = user.uid,
+                callback = { pets ->
+                    userPets = pets
+                    Log.d("MapSensor", "✅ Mascotas cargadas: ${pets.size}")
+                    pets.forEach { pet ->
+                        Log.d("MapSensor", "  - ${pet.name}")
+                    }
+                },
+                onError = { error ->
+                    Log.e("MapSensor", " Error cargando mascotas: $error")
+                }
+            )
+        }
+    }
 
-    // Calcular dinámicamente si cada mascota está en zona segura
-    // IMPORTANTE: se recalcula cuando cambia safeZoneCenter (para WALKER cambia con userLocation)
-    val petLocations = remember(safeZoneCenter, safeZoneRadius, userLocation, userProfile?.userType) {
-        val petCoordinates = listOf(
-            LatLng(4.6097, -74.0817), // Buddy - centro de zona segura
-            LatLng(4.6110, -74.0830), // Max - cerca pero dentro
-            LatLng(4.6150, -74.0850)  // Charlie - fuera de zona segura
+    DisposableEffect(Unit) {
+        Log.d("MapSensor", " Iniciando listener de Firebase Realtime Database")
+
+        val listener = realtimeRepo.listenToLocations(
+            callback = { locations ->
+                realtimeLocations = locations
+                Log.d("MapSensor", " Ubicaciones actualizadas: ${locations.size}")
+                locations.forEach { loc ->
+                    Log.d("MapSensor", "  - ${loc.petName}: (${loc.latitude}, ${loc.longitude})")
+                }
+            },
+            onError = { error ->
+                Log.e("MapSensor", "Error en listener: $error")
+            }
         )
 
-        petCoordinates.mapIndexed { index, petLocation ->
-            val isInZone = safeZoneCenter?.let { center ->
-                val inZone = locationRepository.isInSafeZone(petLocation, center, safeZoneRadius)
+        onDispose {
+            Log.d("MapSensor", " Removiendo listener")
+            realtimeRepo.removeListener()
+        }
+    }
 
-                // Calcular distancia para debug
+    val petPositions = remember { mutableStateMapOf<String, LatLng>() }
+
+    LaunchedEffect(isSimulationRunning, userPets) {
+        if (!isSimulationRunning || userPets.isEmpty()) return@LaunchedEffect
+
+        // Inicializar posiciones de inicio si no existen
+        userPets.forEachIndexed { index, pet ->
+            if (!petPositions.containsKey(pet.petId)) {
+                val initialLocation = when (index % 3) {
+                    0 -> LatLng(4.6097, -74.0817)
+                    1 -> LatLng(4.6100, -74.0820)
+                    else -> LatLng(4.6095, -74.0815)
+                }
+                petPositions[pet.petId] = initialLocation
+                Log.d("MapSensor", "📍 ${pet.name} posición inicial: $initialLocation")
+            }
+        }
+
+        Log.d("MapSensor", "🎮 Iniciando simulación de ubicaciones...")
+
+        while (isSimulationRunning && userPets.isNotEmpty()) {
+            kotlinx.coroutines.delay(2000)
+
+            userPets.forEachIndexed { index, pet ->
+                // Obtener posición actual
+                val currentPos = petPositions[pet.petId] ?: LatLng(4.6097, -74.0817)
+
+                // Cada mascota se mueve en una dirección específica
+                val (latIncrement, lngIncrement) = when (index % 3) {
+                    0 -> Pair(0.0010, 0.0010)
+                    1 -> Pair(-0.0010, 0.0010)
+                    else -> Pair(0.0010, -0.0010)
+                }
+
+                // Nueva posición moviéndose constantemente en la misma dirección
+                val randomLat = currentPos.latitude + latIncrement
+                val randomLng = currentPos.longitude + lngIncrement
+
+                // Actualizar posición almacenada para la próxima iteración
+                petPositions[pet.petId] = LatLng(randomLat, randomLng)
+
+                // Calcular si está en zona segura
+                val petLoc = LatLng(randomLat, randomLng)
                 val distance = FloatArray(1)
                 android.location.Location.distanceBetween(
-                    petLocation.latitude, petLocation.longitude,
-                    center.latitude, center.longitude,
+                    petLoc.latitude, petLoc.longitude,
+                    safeZoneCenter.latitude, safeZoneCenter.longitude,
                     distance
                 )
+                val isInZone = distance[0] <= safeZoneRadius
 
-                Log.d("MapSensor",
-                    "Pet: ${pets[index].name}, " +
-                    "Distancia: ${distance[0].toInt()}m, " +
-                    "Radio: ${safeZoneRadius.toInt()}m, " +
-                    "En zona: $inZone, " +
-                    "UserType: ${userProfile?.userType}"
+                val location = RealtimeLocation(
+                    petId = pet.petId,
+                    petName = pet.name,
+                    latitude = randomLat,
+                    longitude = randomLng,
+                    timestamp = System.currentTimeMillis(),
+                    isInSafeZone = isInZone
                 )
 
-                inZone
-            } ?: false
+                realtimeRepo.updatePetLocation(
+                    location = location,
+                    onSuccess = {
+                        Log.d("MapSensor", " ${pet.name} ubicación simulada")
+                    }
+                )
+            }
+        }
+    }
+
+
+
+   //registrar mascotas desde realtime
+    val petLocations = remember(realtimeLocations, safeZoneCenter, safeZoneRadius) {
+        val petImages = mapOf(
+            "Buddy" to R.drawable.buddy,
+            "Max" to R.drawable.max,
+            "Charlie" to R.drawable.charlie
+        )
+
+        realtimeLocations.map { rtLocation ->
+            // RECALCULAR si está en zona segura
+            val petLoc = LatLng(rtLocation.latitude, rtLocation.longitude)
+            val distance = FloatArray(1)
+            android.location.Location.distanceBetween(
+                petLoc.latitude, petLoc.longitude,
+                safeZoneCenter.latitude, safeZoneCenter.longitude,
+                distance
+            )
+            val isInSafeZone = distance[0] <= safeZoneRadius
+
+            // Detectar cambios de estado y enviar notificaciones
+            val previousState = previousSafeZoneState[rtLocation.petId]
+            if (previousState != null && previousState != isInSafeZone) {
+                // Hubo un cambio de estado
+                if (isInSafeZone) {
+                    // REGRESÓ a zona segura
+                    Log.d("MapSensor", " ${rtLocation.petName} REGRESÓ a zona segura")
+                    notificationHelper.sendGeofenceEnterNotification(rtLocation.petName)
+                } else {
+                    // SALIÓ de zona segura
+                    Log.d("MapSensor", "${rtLocation.petName} SALIÓ de zona segura")
+                    notificationHelper.sendGeofenceExitNotification(rtLocation.petName)
+                }
+            }
+            // Actualizar estado anterior
+            previousSafeZoneState[rtLocation.petId] = isInSafeZone
+
+            // Log para debugging
+            val statusIcon = if (isInSafeZone) "" else "⚠ "
+            val statusText = if (isInSafeZone) "SEGURA" else "FUERA DE ZONA"
+            Log.d("MapSensor", "$statusIcon ${rtLocation.petName}: $statusText (${distance[0].toInt()}m de zona segura)")
 
             PetLocation(
-                pet = pets[index],
-                location = petLocation,
-                isInSafeZone = isInZone,
-                lastUpdate = when(index) {
-                    0 -> "Hace 5 min"
-                    1 -> "Hace 10 min"
-                    else -> "Hace 2 min"
-                }
+                pet = Pet(
+                    name = rtLocation.petName,
+                    imageRes = petImages[rtLocation.petName] ?: R.drawable.perro
+                ),
+                location = petLoc,
+                isInSafeZone = isInSafeZone,
+                lastUpdate = formatTimestamp(rtLocation.timestamp)
             )
         }
     }
@@ -504,11 +632,29 @@ fun MapPageWithNavigation(
         bottomBar = { AppNavigationBar2(navController = navController) },
         floatingActionButton = {
             Column {
+                // Botón de Simulacion
+                if (userPets.isNotEmpty()) {
+                    FloatingActionButton(
+                        onClick = {
+                            isSimulationRunning = !isSimulationRunning
+                            Log.d("MapSensor", if (isSimulationRunning) " Simulación iniciada" else "Simulación detenida")
+                        },
+                        containerColor = if (isSimulationRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
+                        contentColor = TextWhite,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Icon(
+                            if (isSimulationRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = if (isSimulationRunning) "Detener Simulación" else "Iniciar Simulación"
+                        )
+                    }
+                }
+
+                // Boton de Geofence
                 FloatingActionButton(
                     onClick = {
                         geofenceEnabled = !geofenceEnabled
                         if (geofenceEnabled) {
-                            // Geofence se crea en la zona segura (hogar)
                             val geofenceData = GeofenceData(
                                 id = "safezone",
                                 latitude = safeZoneCenter.latitude,
@@ -529,6 +675,7 @@ fun MapPageWithNavigation(
                     Icon(Icons.Default.Shield, null)
                 }
 
+                // Botón de Conectar/Agregar Mascota
                 FloatingActionButton(
                     onClick = onConnectClick,
                     containerColor = PetSafeGreen,
@@ -557,7 +704,6 @@ fun MapPageWithNavigation(
                 SearchBar(pets = petLocations, onPetFound = { found -> selectedPet = found })
                 Spacer(Modifier.height(8.dp))
 
-                // Mapa interactivo
                 InteractiveMapView(
                     petLocations = petLocations,
                     userLocation = userLocation,
@@ -577,7 +723,6 @@ fun MapPageWithNavigation(
 
                 Spacer(Modifier.height(16.dp))
 
-                // Información de la ruta calculada
                 currentRoute?.let { route ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -648,6 +793,14 @@ fun MapPageWithNavigation(
                         )
                         Spacer(Modifier.height(12.dp))
 
+                        if (petLocations.isEmpty()) {
+                            Text(
+                                "Esperando datos de Firebase...",
+                                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+
                         petLocations.forEach { pet ->
                             Row(
                                 Modifier
@@ -663,7 +816,6 @@ fun MapPageWithNavigation(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    // Imagen circular de la mascota con borde de color
                                     AsyncImage(
                                         model = pet.pet.imageRes,
                                         contentDescription = pet.pet.name,
