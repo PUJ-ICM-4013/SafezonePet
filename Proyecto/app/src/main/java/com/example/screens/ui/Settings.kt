@@ -5,18 +5,24 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import com.example.screens.data.NotificationType
 import com.example.screens.footer.AppNavigationBar2
-import com.example.screens.ui.theme.ScreensTheme
+import com.example.screens.notifications.NotificationHelper
+import com.example.screens.notifications.NotificationScheduler
 import com.example.screens.ui.theme.InputGreen
+import com.example.screens.ui.theme.PetSafeGreen
+import com.example.screens.ui.theme.ScreensTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,19 +65,78 @@ fun SettingsPageWithNavigation(
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val notificationHelper = remember { NotificationHelper(context) }
+    val notificationScheduler = remember { NotificationScheduler(context) }
+
     var petTracking by remember { mutableStateOf(false) }
     var peopleTracking by remember { mutableStateOf(false) }
-    var petZoneAlerts by remember { mutableStateOf(false) }
+    var petZoneAlerts by remember { mutableStateOf(true) }
     var peopleZoneAlerts by remember { mutableStateOf(false) }
-    var batteryAlerts by remember { mutableStateOf(false) }
-    var updateFrequency by remember { mutableFloatStateOf(10f) }
+    var batteryAlerts by remember { mutableStateOf(true) }
+    var periodicMonitoring by remember { mutableStateOf(true) }
+    var updateFrequency by remember { mutableFloatStateOf(15f) }
     var safeZoneRadius by remember { mutableFloatStateOf(50f) }
+
+    var showTestDialog by remember { mutableStateOf(false) }
+
+    // Control del monitoreo periódico
+    LaunchedEffect(periodicMonitoring) {
+        if (periodicMonitoring) {
+            notificationScheduler.startPeriodicMonitoring(updateFrequency.toLong())
+        } else {
+            notificationScheduler.stopPeriodicMonitoring()
+        }
+    }
 
     Column(
         modifier = modifier
             .padding(16.dp)
             .fillMaxSize()
     ) {
+        // Sección de Prueba de Notificaciones
+        Text(
+            "Test Notifications",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = PetSafeGreen
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            onClick = { showTestDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = PetSafeGreen
+            )
+        ) {
+            Icon(Icons.Default.Notifications, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Probar Notificaciones")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Monitoreo Automático
+        Text(
+            "Automatic Monitoring",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        SettingSwitch(
+            title = "Periodic Monitoring",
+            description = "Automatically check pet status every few minutes",
+            checked = periodicMonitoring,
+            onCheckedChange = { periodicMonitoring = it }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         Text(
             "Tracking",
             style = MaterialTheme.typography.titleMedium,
@@ -136,13 +201,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.height(8.dp))
 
         Text("Update Frequency", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-        Text("Adjust the frequency of location updates", style = MaterialTheme.typography.bodySmall)
+        Text("Adjust the frequency of monitoring checks", style = MaterialTheme.typography.bodySmall)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Update Frequency (seconds)", style = MaterialTheme.typography.bodyMedium)
-            Text("${updateFrequency.toInt()}s", style = MaterialTheme.typography.bodyMedium)
+            Text("Check Interval (minutes)", style = MaterialTheme.typography.bodyMedium)
+            Text("${updateFrequency.toInt()} min", style = MaterialTheme.typography.bodyMedium)
         }
         Slider(
             value = updateFrequency,
@@ -203,6 +268,103 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Go", tint = MaterialTheme.colorScheme.primary)
         }
     }
+
+    // Diálogo de prueba de notificaciones
+    if (showTestDialog) {
+        TestNotificationsDialog(
+            onDismiss = { showTestDialog = false },
+            notificationHelper = notificationHelper,
+            notificationScheduler = notificationScheduler
+        )
+    }
+}
+
+@Composable
+fun TestNotificationsDialog(
+    onDismiss: () -> Unit,
+    notificationHelper: NotificationHelper,
+    notificationScheduler: NotificationScheduler
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Probar Notificaciones") },
+        text = {
+            Column {
+                Text("Selecciona el tipo de notificación que deseas probar:")
+            }
+        },
+        confirmButton = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Notificación de salida de zona
+                Button(
+                    onClick = {
+                        notificationHelper.sendGeofenceExitNotification("Buddy")
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PetSafeGreen)
+                ) {
+                    Text("Alerta: Mascota fuera de zona")
+                }
+
+                // Notificación de regreso
+                Button(
+                    onClick = {
+                        notificationHelper.sendGeofenceEnterNotification("Max")
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PetSafeGreen)
+                ) {
+                    Text("Mascota de regreso")
+                }
+
+                // Notificación de batería baja
+                Button(
+                    onClick = {
+                        notificationHelper.sendLowBatteryNotification("Charlie", 15)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PetSafeGreen)
+                ) {
+                    Text("Batería baja")
+                }
+
+                // Notificación de mascota perdida
+                Button(
+                    onClick = {
+                        notificationHelper.sendLostPetReportNotification("Luna", "Central Park")
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PetSafeGreen)
+                ) {
+                    Text("Mascota perdida reportada")
+                }
+
+                // Verificación inmediata
+                Button(
+                    onClick = {
+                        notificationScheduler.runImmediateCheck()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = InputGreen)
+                ) {
+                    Text("Ejecutar verificación inmediata")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }
 
 @Composable

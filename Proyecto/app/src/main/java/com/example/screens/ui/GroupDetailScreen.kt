@@ -27,13 +27,7 @@ import com.example.screens.R
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.theme.ScreensTheme
-
-data class GroupMember(
-    val id: Int,
-    val name: String,
-    val email: String,
-    val imageRes: Int
-)
+import com.example.screens.data.GroupMember
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

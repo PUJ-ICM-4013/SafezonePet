@@ -16,8 +16,6 @@ import android.util.Log
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,30 +35,27 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.screens.Data.GeofenceData
-import com.example.screens.Data.LocationHistory
-import com.example.screens.Data.Pet
+import com.example.screens.data.GeofenceData
+import com.example.screens.data.Pet
 import com.example.screens.R
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.geofence.GeofenceHelper
-import com.example.screens.location.LocationRepository
-import com.example.screens.network.DirectionsApiService
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.theme.TextWhite
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.maps.model.*
-import com.google.maps.android.PolyUtil
 import com.google.maps.android.compose.*
+import com.example.screens.data.PetLocation
+import com.example.screens.data.RouteInfo
+import com.example.screens.sensors.rememberLightSensor
+import com.example.screens.repository.RouteRepository
+import com.example.screens.viewmodel.RealtimeLocationViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import com.example.screens.Data.PetLocation
-import com.example.screens.Data.RouteInfo
+
 
 
 fun getCircularBitmap(bitmap: Bitmap): Bitmap {
@@ -122,9 +117,9 @@ fun createCircularMarkerIcon(
     canvas.drawCircle(centerX + 3, centerY + 3, (size + borderSize) / 2f, paint)
 
     paint.color = if (isInSafeZone) {
-        android.graphics.Color.parseColor("#4CAF50") 
+        android.graphics.Color.parseColor("#4CAF50")
     } else {
-        android.graphics.Color.parseColor("#F44336") 
+        android.graphics.Color.parseColor("#F44336")
     }
     canvas.drawCircle(centerX, centerY, (size + borderSize) / 2f, paint)
 
@@ -157,11 +152,11 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, size / 2f, paint)
 
-     
+
     paint.color = android.graphics.Color.parseColor("#2196F3")
     canvas.drawCircle(centerX, centerY, (size / 2f) - 6, paint)
 
-    
+
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(centerX, centerY, size / 8f, paint)
 
@@ -174,49 +169,25 @@ fun createUserMarkerIcon(context: Context, size: Int = 100): BitmapDescriptor {
 }
 
 
-@Composable
-fun rememberLightSensor(): Boolean {
-    val context = LocalContext.current
-    var isDarkMode by remember { mutableStateOf(false) }
-
-    DisposableEffect(context) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val lightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
-
-        if (lightSensor != null) {
-            val listener = object : SensorEventListener {
-                override fun onSensorChanged(event: SensorEvent) {
-                    val lux = event.values[0]
-                    isDarkMode = lux < 20
-                }
-
-                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-            }
-
-            sensorManager.registerListener(listener, lightSensor, SensorManager.SENSOR_DELAY_NORMAL)
-            onDispose { sensorManager.unregisterListener(listener) }
-        } else {
-            Log.w("LightSensor", "Light sensor not available on this device")
-            onDispose { }
-        }
-    }
-
-    return isDarkMode
-}
-
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun InteractiveMapView(
     modifier: Modifier = Modifier,
     petLocations: List<PetLocation>,
     userLocation: LatLng?,
+    safeZoneCenter: LatLng?,
     safeZoneRadius: Float = 500f,
     selectedPet: PetLocation? = null,
     routeInfo: RouteInfo? = null,
     isDarkMode: Boolean = false,
-    onLocationClick: (PetLocation) -> Unit = {}
+    userProfile: com.example.screens.data.UserProfile? = null,
+    onLocationClick: (PetLocation) -> Unit = {},
+    onRouteCalculated: (RouteInfo?) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val routeRepository = remember { RouteRepository() }
+
     val locationPermissions = rememberMultiplePermissionsState(
         listOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -227,7 +198,7 @@ fun InteractiveMapView(
     val defaultLocation = LatLng(4.6097, -74.0817)
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(
-            selectedPet?.location ?: userLocation ?: defaultLocation,
+            selectedPet?.location ?: safeZoneCenter ?: userLocation ?: defaultLocation,
             15f
         )
     }
@@ -240,6 +211,24 @@ fun InteractiveMapView(
             )
         }
     }
+    
+
+    // ENVÍA UBICACIÓN CADA 5 SEGUNDOS A FIREBASE
+    val realtimeViewModel: RealtimeLocationViewModel = viewModel()
+
+    LaunchedEffect(selectedPet, userLocation) {
+        if (selectedPet != null && userLocation != null) {
+            while (true) {
+                realtimeViewModel.sendPetLocation(
+                    petId = selectedPet.pet.name.lowercase(),
+                    lat = userLocation.latitude,
+                    lon = userLocation.longitude
+                )
+                delay(5000)
+            }
+        }
+    }
+
 
     var mapProperties by remember {
         mutableStateOf(
@@ -316,12 +305,26 @@ fun InteractiveMapView(
             properties = mapProperties,
             uiSettings = uiSettings
         ) {
-            // Ubicación usuario con marcador circular personalizado
+            // Ubicación GPS actual del usuario (marcador azul)
             userLocation?.let {
                 Marker(
                     state = MarkerState(position = it),
-                    title = "Mi ubicación",
+                    title = "Mi ubicación actual",
                     icon = createUserMarkerIcon(context)
+                )
+            }
+
+            // Zona segura (dinámica según tipo de usuario)
+            safeZoneCenter?.let {
+                val markerTitle = when (userProfile?.userType) {
+                    com.example.screens.data.UserType.OWNER -> "Hogar (Zona Segura)"
+                    com.example.screens.data.UserType.WALKER -> "Mi Ubicación (Zona Móvil)"
+                    else -> "Zona Segura"
+                }
+                Marker(
+                    state = MarkerState(position = it),
+                    title = markerTitle,
+                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
                 )
                 Circle(
                     center = it,
@@ -336,6 +339,7 @@ fun InteractiveMapView(
                 Marker(
                     state = MarkerState(position = pet.location),
                     title = pet.pet.name,
+                    snippet = "Toca para ver la ruta",
                     icon = createCircularMarkerIcon(
                         context,
                         pet.pet.imageRes,
@@ -343,7 +347,23 @@ fun InteractiveMapView(
                     ),
                     onClick = {
                         onLocationClick(pet)
-                        true
+                        // Calcular ruta con OSRM cuando se toca el marcador
+                        userLocation?.let { origin ->
+                            scope.launch {
+                                val result = routeRepository.getRoute(origin, pet.location)
+                                result.fold(
+                                    onSuccess = { route ->
+                                        onRouteCalculated(route)
+                                        Log.d("MapSensor", "Ruta calculada: ${route.distance}, ${route.duration}")
+                                    },
+                                    onFailure = { error ->
+                                        Log.e("MapSensor", "Error calculando ruta: ${error.message}")
+                                        onRouteCalculated(null)
+                                    }
+                                )
+                            }
+                        }
+                        false // Permite que se muestre el InfoWindow
                     }
                 )
             }
@@ -377,36 +397,118 @@ fun SearchBar(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun MapPageWithNavigation(
     navController: NavController,
+    userProfile: com.example.screens.data.UserProfile? = null,
     onSettingsClick: () -> Unit,
     onConnectClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val directionsApi = remember { DirectionsApiService.create() }
-    val locationRepository = remember { LocationRepository() }
     val geofenceHelper = remember { GeofenceHelper(context) }
     val isDarkMode = rememberLightSensor()
 
-    val userLocation = LatLng(4.6097, -74.0817)
+    // Obtener ubicación GPS real del dispositivo (para trazar rutas)
+    val locationPermissions = rememberMultiplePermissionsState(
+        listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    )
+
+    var userLocation by remember { mutableStateOf<LatLng?>(null) }
+    val fusedLocationClient = remember {
+        com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    // Zona segura dinámica según el tipo de usuario
+    val safeZoneCenter = remember(userProfile, userLocation) {
+        when (userProfile?.userType) {
+            com.example.screens.data.UserType.OWNER -> {
+                // Dueño
+                userProfile.homeLocation ?: LatLng(4.6097, -74.0817)
+            }
+            com.example.screens.data.UserType.WALKER -> {
+                // Paseador
+                userLocation ?: LatLng(4.6097, -74.0817)
+            }
+            else -> LatLng(4.6097, -74.0817) // Default fallback
+        }
+    }
+    val safeZoneRadius = 500f
+
+    LaunchedEffect(locationPermissions.allPermissionsGranted) {
+        if (locationPermissions.allPermissionsGranted) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                    location?.let {
+                        userLocation = LatLng(it.latitude, it.longitude)
+                        Log.d("MapSensor", "Ubicación GPS del dispositivo obtenida: ${it.latitude}, ${it.longitude}")
+                    }
+                }
+            } catch (e: SecurityException) {
+                Log.e("MapSensor", "Error obteniendo ubicación GPS: ${e.message}")
+            }
+        }
+    }
+
     val pets = listOf(
         Pet("Buddy", R.drawable.buddy),
         Pet("Max", R.drawable.max),
         Pet("Charlie", R.drawable.charlie)
     )
-    val petLocations = remember {
-        listOf(
-            PetLocation(pets[0], LatLng(4.6097, -74.0817), true, "Hace 5 min"),
-            PetLocation(pets[1], LatLng(4.6110, -74.0830), true, "Hace 10 min"),
-            PetLocation(pets[2], LatLng(4.6150, -74.0850), false, "Hace 2 min")
+
+    // Repositorio para calcular distancias
+    val locationRepository = remember { com.example.screens.repository.LocationRepository() }
+
+    // Calcular dinámicamente si cada mascota está en zona segura
+    // IMPORTANTE: se recalcula cuando cambia safeZoneCenter (para WALKER cambia con userLocation)
+    val petLocations = remember(safeZoneCenter, safeZoneRadius, userLocation, userProfile?.userType) {
+        val petCoordinates = listOf(
+            LatLng(4.6097, -74.0817), // Buddy - centro de zona segura
+            LatLng(4.6110, -74.0830), // Max - cerca pero dentro
+            LatLng(4.6150, -74.0850)  // Charlie - fuera de zona segura
         )
+
+        petCoordinates.mapIndexed { index, petLocation ->
+            val isInZone = safeZoneCenter?.let { center ->
+                val inZone = locationRepository.isInSafeZone(petLocation, center, safeZoneRadius)
+
+                // Calcular distancia para debug
+                val distance = FloatArray(1)
+                android.location.Location.distanceBetween(
+                    petLocation.latitude, petLocation.longitude,
+                    center.latitude, center.longitude,
+                    distance
+                )
+
+                Log.d("MapSensor",
+                    "Pet: ${pets[index].name}, " +
+                    "Distancia: ${distance[0].toInt()}m, " +
+                    "Radio: ${safeZoneRadius.toInt()}m, " +
+                    "En zona: $inZone, " +
+                    "UserType: ${userProfile?.userType}"
+                )
+
+                inZone
+            } ?: false
+
+            PetLocation(
+                pet = pets[index],
+                location = petLocation,
+                isInSafeZone = isInZone,
+                lastUpdate = when(index) {
+                    0 -> "Hace 5 min"
+                    1 -> "Hace 10 min"
+                    else -> "Hace 2 min"
+                }
+            )
+        }
     }
 
     var selectedPet by remember { mutableStateOf<PetLocation?>(null) }
-    var routeInfo by remember { mutableStateOf<RouteInfo?>(null) }
+    var currentRoute by remember { mutableStateOf<RouteInfo?>(null) }
     var geofenceEnabled by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -427,11 +529,12 @@ fun MapPageWithNavigation(
                     onClick = {
                         geofenceEnabled = !geofenceEnabled
                         if (geofenceEnabled) {
+                            // Geofence se crea en la zona segura (hogar)
                             val geofenceData = GeofenceData(
                                 id = "safezone",
-                                latitude = userLocation.latitude,
-                                longitude = userLocation.longitude,
-                                radius = 500f,
+                                latitude = safeZoneCenter.latitude,
+                                longitude = safeZoneCenter.longitude,
+                                radius = safeZoneRadius,
                                 petId = "zona",
                                 petName = "zona segura"
                             )
@@ -479,51 +582,74 @@ fun MapPageWithNavigation(
                 InteractiveMapView(
                     petLocations = petLocations,
                     userLocation = userLocation,
+                    safeZoneCenter = safeZoneCenter,
+                    safeZoneRadius = safeZoneRadius,
                     selectedPet = selectedPet,
-                    routeInfo = routeInfo,
+                    routeInfo = currentRoute,
                     isDarkMode = isDarkMode,
+                    userProfile = userProfile,
                     onLocationClick = { pet ->
                         selectedPet = pet
-                        routeInfo = null
-
-                        scope.launch {
-                            try {
-                                val origin = "${userLocation.latitude},${userLocation.longitude}"
-                                val destination = "${pet.location.latitude},${pet.location.longitude}"
-                                val apiKey = "TU_API_KEY"
-
-                                val response = directionsApi.getDirections(origin, destination, apiKey, "driving")
-
-                                if (response.status == "OK" && response.routes.isNotEmpty()) {
-                                    val route = response.routes.first()
-                                    val leg = route.legs.first()
-                                    val decodedPoints = PolyUtil.decode(route.overview_polyline.points)
-
-                                    routeInfo = RouteInfo(
-                                        distance = leg.distance.text,
-                                        duration = leg.duration.text,
-                                        polylinePoints = decodedPoints
-                                    )
-
-                                    val history = LocationHistory(
-                                        petId = pet.pet.name,
-                                        petName = pet.pet.name,
-                                        latitude = pet.location.latitude,
-                                        longitude = pet.location.longitude,
-                                        timestamp = System.currentTimeMillis(),
-                                        isInSafeZone = pet.isInSafeZone,
-                                        address = leg.end_address
-                                    )
-                                    locationRepository.saveLocation(history)
-                                }
-                            } catch (e: Exception) {
-                                Log.e("Route", "Error obteniendo ruta: ${e.localizedMessage}")
-                            }
-                        }
+                    },
+                    onRouteCalculated = { route ->
+                        currentRoute = route
                     }
                 )
 
                 Spacer(Modifier.height(16.dp))
+
+                // Información de la ruta calculada
+                currentRoute?.let { route ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = PetSafeGreen.copy(alpha = 0.9f)
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Ruta a ${selectedPet?.pet?.name ?: "mascota"}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TextWhite,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Row {
+                                    Icon(
+                                        Icons.Default.DirectionsWalk,
+                                        contentDescription = null,
+                                        tint = TextWhite,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = "${route.distance} • ${route.duration}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextWhite
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = { currentRoute = null }
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Cerrar ruta",
+                                    tint = TextWhite
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -547,7 +673,9 @@ fun MapPageWithNavigation(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clickable { selectedPet = pet }
+                                    .clickable {
+                                        selectedPet = pet
+                                    }
                                     .padding(vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -613,42 +741,6 @@ fun MapPageWithNavigation(
                 }
 
                 Spacer(Modifier.height(80.dp))
-            }
-
-            AnimatedVisibility(
-                visible = routeInfo != null,
-                enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-                exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 80.dp)
-            ) {
-                routeInfo?.let { info ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(0.9f)
-                    ) {
-                        Row(
-                            Modifier
-                                .padding(16.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text("Distancia: ${info.distance}", fontWeight = FontWeight.Bold)
-                                Text("Duración: ${info.duration}")
-                            }
-                            IconButton(onClick = { routeInfo = null }) {
-                                Icon(Icons.Default.Close, contentDescription = "Cerrar")
-                            }
-                        }
-                    }
-                }
             }
         }
     }

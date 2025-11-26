@@ -17,17 +17,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import com.example.screens.data.LocationHistoryItem
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.theme.ScreensTheme
-
-data class LocationHistoryItem(
-    val id: Int,
-    val petName: String,
-    val location: String,
-    val dateTime: String,
-    val status: String
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

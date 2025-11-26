@@ -80,6 +80,7 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation(libs.firebase.database)
 
     //Backend:
     implementation("com.squareup.retrofit2:retrofit:2.11.0")

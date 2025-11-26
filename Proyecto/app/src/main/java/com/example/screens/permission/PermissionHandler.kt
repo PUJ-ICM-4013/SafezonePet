@@ -12,7 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import com.example.screens.Data.PermissionMessage
+import com.example.screens.data.PermissionMessage
 
 enum class PermissionType(val permission: String) {
     CAMERA(android.Manifest.permission.CAMERA),

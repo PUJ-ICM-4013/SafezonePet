@@ -23,19 +23,8 @@ import androidx.navigation.compose.rememberNavController
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.theme.ScreensTheme
-
-data class NotificationItem(
-    val id: Int,
-    val title: String,
-    val message: String,
-    val time: String,
-    val type: NotificationType,
-    val isRead: Boolean = false
-)
-
-enum class NotificationType {
-    ALERT, PET, GENERAL
-}
+import com.example.screens.data.NotificationItem
+import com.example.screens.data.NotificationType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
