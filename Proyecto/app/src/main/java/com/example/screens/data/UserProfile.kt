@@ -1,7 +1,6 @@
 package com.example.screens.data
 
 import com.google.android.gms.maps.model.LatLng
-import com.google.gson.annotations.SerializedName
 
 data class UserProfile(
     val userId: String = "",
@@ -13,7 +12,11 @@ data class UserProfile(
     val homeAddress: String = "", // Dirección legible
     val phoneNumber: String = "",
     val profileImageUrl: String = "",
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val phone: String = "",
+    val address: String = "",
+    val dogs: List<kotlinx.serialization.json.JsonObject> = emptyList(),
+    val role: UserType
 ) {
 
     @delegate:Transient
@@ -49,7 +52,11 @@ data class UserProfile(
                 homeAddress = map["homeAddress"] as? String ?: "",
                 phoneNumber = map["phoneNumber"] as? String ?: "",
                 profileImageUrl = map["profileImageUrl"] as? String ?: "",
-                createdAt = map["createdAt"] as? Long ?: System.currentTimeMillis()
+                createdAt = map["createdAt"] as? Long ?: System.currentTimeMillis(),
+                phone = map["phone"] as? String ?: "",
+                address = map["address"] as? String ?: "",
+                dogs = map["dogs"] as? List<kotlinx.serialization.json.JsonObject> ?: emptyList(),
+                role = UserType.valueOf(map["userType"] as? String ?: "OWNER")
             )
         }
     }

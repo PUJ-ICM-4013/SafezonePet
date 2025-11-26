@@ -8,21 +8,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.screens.repository.GroupRepository
 import com.example.screens.ui.components.AppTextField
 import com.example.screens.ui.theme.PetSafeGreen
-import com.example.screens.ui.theme.ScreensTheme
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateGroupScreenWithNavigation(
+    currentUserId: String,
     onBackClick: () -> Unit,
-    onCreateClick: (String, String) -> Unit
+    onCreated: (String) -> Unit // groupId
 ) {
+    val repo = remember { GroupRepository() }
+    val scope = rememberCoroutineScope()
+
     var groupName by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -51,10 +57,7 @@ fun CreateGroupScreenWithNavigation(
 
             AppTextField(
                 value = groupName,
-                onValueChange = {
-                    groupName = it
-                    showError = false
-                },
+                onValueChange = { groupName = it; showError = false; errorText = null },
                 label = { Text("Group Name") }
             )
 
@@ -62,10 +65,7 @@ fun CreateGroupScreenWithNavigation(
 
             AppTextField(
                 value = description,
-                onValueChange = {
-                    description = it
-                    showError = false
-                },
+                onValueChange = { description = it; showError = false; errorText = null },
                 label = { Text("Description") },
                 singleLine = false,
                 modifier = Modifier.height(120.dp)
@@ -80,16 +80,42 @@ fun CreateGroupScreenWithNavigation(
                 )
             }
 
+            if (errorText != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = errorText!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
             Button(
                 onClick = {
-                    if (groupName.isNotBlank()) {
-                        onCreateClick(groupName, description)
-                    } else {
+                    if (groupName.isBlank()) {
                         showError = true
+                        return@Button
+                    }
+                    scope.launch {
+                        creating = true
+                        errorText = null
+                        try {
+                            val group = repo.createGroup(
+                                ownerId = currentUserId,
+                                name = groupName,
+                                description = description
+                            )
+                            onCreated(group.id) // navega a detalle
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            errorText = "No se pudo crear el grupo"
+                        } finally {
+                            creating = false
+                        }
                     }
                 },
+                enabled = !creating,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
@@ -98,19 +124,9 @@ fun CreateGroupScreenWithNavigation(
                     contentColor = Color.Black
                 )
             ) {
-                Text("Create Group", style = MaterialTheme.typography.labelLarge)
+                if (creating) CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                else Text("Create Group", style = MaterialTheme.typography.labelLarge)
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun CreateGroupScreenPreview() {
-    ScreensTheme {
-        CreateGroupScreenWithNavigation(
-            onBackClick = {},
-            onCreateClick = { _, _ -> }
-        )
     }
 }

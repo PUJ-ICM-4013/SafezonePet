@@ -24,6 +24,9 @@ import coil.compose.AsyncImage
 import com.example.screens.permission.*
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.components.AppTextField
+import com.example.screens.data.CommunityReport
+import com.example.screens.repository.CommunityReportRepository
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -31,15 +34,28 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewReportScreenWithNavigation(
+    currentUserId: String,
+    currentUserName: String,
+    currentUserEmail: String,
     onBackClick: () -> Unit,
-    onSubmitClick: () -> Unit
+    onSubmitClick: (String) -> Unit // <- devuelve reportId
 ) {
+    val repo = remember { CommunityReportRepository() }
+    val scope = rememberCoroutineScope()
+
+    var status by remember { mutableStateOf("LOST") } // LOST | FOUND
     var title by remember { mutableStateOf("") }
     var details by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+
     var showDialog by remember { mutableStateOf(false) }
+    var submitting by remember { mutableStateOf(false) }
+    var submitError by remember { mutableStateOf<String?>(null) }
+
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var tempCameraUri by remember { mutableStateOf<Uri?>(null) } // URI temporal para la cámara
+    var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
+
     var showCameraRationale by remember { mutableStateOf(false) }
     var showGalleryRationale by remember { mutableStateOf(false) }
     var showCameraDenied by remember { mutableStateOf(false) }
@@ -53,21 +69,14 @@ fun NewReportScreenWithNavigation(
         if (uri != null) {
             selectedImageUri = uri
             capturedImageUri = null
-            println("Image selected from gallery: $uri")
         }
     }
 
     val galleryPermissionHandler = rememberPermissionHandler { result ->
         when (result) {
-            is PermissionResult.Granted -> {
-                galleryLauncher.launch("image/*")
-            }
-            is PermissionResult.Denied -> {
-                showGalleryDenied = true
-            }
-            is PermissionResult.PermanentlyDenied -> {
-                showGalleryDenied = true
-            }
+            is PermissionResult.Granted -> galleryLauncher.launch("image/*")
+            is PermissionResult.Denied -> showGalleryDenied = true
+            is PermissionResult.PermanentlyDenied -> showGalleryDenied = true
         }
     }
 
@@ -90,11 +99,8 @@ fun NewReportScreenWithNavigation(
         if (success && tempCameraUri != null) {
             capturedImageUri = tempCameraUri
             selectedImageUri = null
-            println("Photo captured successfully: $capturedImageUri")
-        } else {
-            println("Photo capture failed")
-            tempCameraUri = null
         }
+        tempCameraUri = null
     }
 
     val cameraPermissionHandler = rememberPermissionHandler { result ->
@@ -103,12 +109,8 @@ fun NewReportScreenWithNavigation(
                 tempCameraUri = createImageUri()
                 cameraLauncher.launch(tempCameraUri!!)
             }
-            is PermissionResult.Denied -> {
-                showCameraDenied = true
-            }
-            is PermissionResult.PermanentlyDenied -> {
-                showCameraDenied = true
-            }
+            is PermissionResult.Denied -> showCameraDenied = true
+            is PermissionResult.PermanentlyDenied -> showCameraDenied = true
         }
     }
 
@@ -164,31 +166,55 @@ fun NewReportScreenWithNavigation(
         )
     }
 
+    val imageToSubmit = capturedImageUri ?: selectedImageUri
+
     if (showDialog) {
         AlertDialog(
-            onDismissRequest = { showDialog = false },
+            onDismissRequest = { if (!submitting) showDialog = false },
             title = { Text("Confirm Report") },
-            text = { Text("Are you sure you want to submit this lost pet report?") },
+            text = { Text("Are you sure you want to submit this report?") },
             confirmButton = {
                 Button(
                     onClick = {
-                        showDialog = false
-                        val imageToSubmit = capturedImageUri ?: selectedImageUri
-                        println("Submitting report with image: $imageToSubmit")
-                        onSubmitClick()
+                        scope.launch {
+                            submitting = true
+                            submitError = null
+                            try {
+                                val report = CommunityReport(
+                                    status = status,
+                                    title = title.trim(),
+                                    description = details.trim(),
+                                    imageUrl = imageToSubmit?.toString() ?: "",
+                                    reporterUid = currentUserId,
+                                    reporterName = currentUserName,
+                                    reporterEmail = currentUserEmail,
+                                    reporterPhone = phone.trim()
+                                )
+                                val saved = repo.createReport(report)
+                                showDialog = false
+                                onSubmitClick(saved.id) // <- navega con reportId
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                submitError = "No se pudo enviar el reporte"
+                            } finally {
+                                submitting = false
+                            }
+                        }
                     },
+                    enabled = !submitting,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = PetSafeGreen,
                         contentColor = Color.Black
                     )
                 ) {
-                    Text("Submit")
+                    if (submitting) CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    else Text("Submit")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(
+                    onClick = { if (!submitting) showDialog = false }
+                ) { Text("Cancel") }
             }
         )
     }
@@ -206,38 +232,46 @@ fun NewReportScreenWithNavigation(
         },
         bottomBar = {
             Button(
-                onClick = {
-                    if (title.isNotBlank() && details.isNotBlank()) {
-                        showDialog = true
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
+                onClick = { showDialog = true },
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = PetSafeGreen,
                     contentColor = Color.Black
                 ),
-                enabled = title.isNotBlank() && details.isNotBlank()
+                enabled = title.isNotBlank() && details.isNotBlank() && !submitting
             ) {
                 Text("Submit Report", style = MaterialTheme.typography.labelLarge)
             }
         }
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .padding(16.dp)
-                .fillMaxSize(),
+            modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(),
             verticalArrangement = Arrangement.Top
         ) {
+            // Status
+            Text("Status", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = status == "LOST",
+                    onClick = { status = "LOST" },
+                    label = { Text("Lost") }
+                )
+                FilterChip(
+                    selected = status == "FOUND",
+                    onClick = { status = "FOUND" },
+                    label = { Text("Found") }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text("Report Details", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(8.dp))
 
             AppTextField(
                 value = title,
-                onValueChange = { title = it },
+                onValueChange = { title = it; submitError = null },
                 label = { Text("Enter Title") }
             )
 
@@ -248,14 +282,29 @@ fun NewReportScreenWithNavigation(
 
             AppTextField(
                 value = details,
-                onValueChange = { details = it },
+                onValueChange = { details = it; submitError = null },
                 label = { Text("Enter Details") },
                 singleLine = false,
                 modifier = Modifier.height(120.dp)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
+            Text("Phone (optional)", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            AppTextField(
+                value = phone,
+                onValueChange = { phone = it; submitError = null },
+                label = { Text("Contact phone") }
+            )
+
+            if (submitError != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(submitError!!, color = MaterialTheme.colorScheme.error)
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             Text("Media", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(8.dp))
@@ -264,9 +313,7 @@ fun NewReportScreenWithNavigation(
 
             if (imageToShow != null) {
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
+                    modifier = Modifier.fillMaxWidth().height(200.dp),
                     shape = RoundedCornerShape(12.dp),
                     elevation = CardDefaults.cardElevation(4.dp)
                 ) {
@@ -275,19 +322,11 @@ fun NewReportScreenWithNavigation(
                             model = imageToShow,
                             contentDescription = "Selected image",
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                            onError = { error ->
-                                println("Error loading image: ${error.result.throwable.message}")
-                            },
-                            onSuccess = {
-                                println("Image loaded successfully: $imageToShow")
-                            }
+                            contentScale = ContentScale.Crop
                         )
 
                         Surface(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp),
+                            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
                             shape = RoundedCornerShape(20.dp),
                             color = PetSafeGreen
                         ) {
@@ -302,24 +341,14 @@ fun NewReportScreenWithNavigation(
                                     tint = Color.White,
                                     modifier = Modifier.size(16.dp)
                                 )
-                                Text(
-                                    "Ready",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White
-                                )
+                                Text("Ready", style = MaterialTheme.typography.bodySmall, color = Color.White)
                             }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    "Image attached to report",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = PetSafeGreen
-                )
-
+                Text("Image attached to report", style = MaterialTheme.typography.bodySmall, color = PetSafeGreen)
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
@@ -329,13 +358,13 @@ fun NewReportScreenWithNavigation(
             ) {
                 Button(
                     onClick = {
-                        if (galleryPermissionHandler.isPermissionGranted(
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                    android.Manifest.permission.READ_MEDIA_IMAGES
-                                } else {
-                                    android.Manifest.permission.READ_EXTERNAL_STORAGE
-                                }
-                            )) {
+                        val perm = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            android.Manifest.permission.READ_MEDIA_IMAGES
+                        } else {
+                            android.Manifest.permission.READ_EXTERNAL_STORAGE
+                        }
+
+                        if (galleryPermissionHandler.isPermissionGranted(perm)) {
                             galleryLauncher.launch("image/*")
                         } else {
                             showGalleryRationale = true
@@ -364,9 +393,7 @@ fun NewReportScreenWithNavigation(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 border = BorderStroke(1.dp, PetSafeGreen),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color.White
-                )
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
             ) {
                 Icon(Icons.Filled.PhotoCamera, contentDescription = "Take Photo")
                 Spacer(modifier = Modifier.width(8.dp))
@@ -380,7 +407,10 @@ fun NewReportScreenWithNavigation(
 @Composable
 fun PreviewNewReportScreen() {
     NewReportScreenWithNavigation(
+        currentUserId = "uid_demo",
+        currentUserName = "Demo User",
+        currentUserEmail = "demo@email.com",
         onBackClick = {},
-        onSubmitClick = {}
+        onSubmitClick = { /* reportId */ }
     )
 }
