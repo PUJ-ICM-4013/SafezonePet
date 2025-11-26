@@ -1,10 +1,14 @@
 package com.example.screens.navigation
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -12,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.screens.ui.*
+import com.example.screens.viewmodel.AuthViewModel
 
 // Definicion de rutas
 sealed class Screen(val route: String) {
@@ -19,19 +24,24 @@ sealed class Screen(val route: String) {
     object Signup : Screen("signup")
     object Loading : Screen("loading")
     object Map : Screen("map")
+
     object Community : Screen("community")
+    object NewReport : Screen("new_report")
+    object LostPetReport : Screen("lost_pet_report/{reportId}") {
+        fun createRoute(reportId: String) = "lost_pet_report/$reportId"
+    }
+
     object Groups : Screen("groups")
+    object CreateGroup : Screen("create_group")
+    object GroupDetail : Screen("group_detail/{groupId}") {
+        fun createRoute(groupId: String) = "group_detail/$groupId"
+    }
+
     object PetProfile : Screen("pet_profile")
     object ConnectTracker : Screen("connect_tracker")
-    object LostPetReport : Screen("lost_pet_report")
-    object NewReport : Screen("new_report")
     object Settings : Screen("settings")
     object Notifications : Screen("notifications")
     object LocationHistory : Screen("location_history")
-    object CreateGroup : Screen("create_group")
-    object GroupDetail : Screen("group_detail/{groupName}") {
-        fun createRoute(groupName: String) = "group_detail/$groupName"
-    }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
@@ -40,10 +50,13 @@ fun AppNavigation(
     navController: NavHostController = rememberNavController(),
     startDestination: String = Screen.Login.route
 ) {
-    // ViewModel compartido para mantener el estado del usuario en toda la app
-    val authViewModel: com.example.screens.viewmodel.AuthViewModel =
-        androidx.lifecycle.viewmodel.compose.viewModel()
+    val authViewModel: AuthViewModel = viewModel()
     val userProfile by authViewModel.currentUserProfile.collectAsState()
+
+    // Ajusta estos nombres si tu UserProfile usa otros campos
+    val currentUserId = userProfile?.userId ?: ""
+    val currentUserName = userProfile?.name ?: ""
+    val currentUserEmail = userProfile?.email ?: ""
 
     NavHost(
         navController = navController,
@@ -73,7 +86,7 @@ fun AppNavigation(
             ) + fadeOut(animationSpec = tween(300))
         }
     ) {
-        // Login Screen
+        // Login
         composable(Screen.Login.route) {
             LoginScreenWithNavigation(
                 viewModel = authViewModel,
@@ -82,13 +95,11 @@ fun AppNavigation(
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 },
-                onSignupClick = {
-                    navController.navigate(Screen.Signup.route)
-                }
+                onSignupClick = { navController.navigate(Screen.Signup.route) }
             )
         }
 
-        // Signup Screen
+        // Signup
         composable(Screen.Signup.route) {
             SignupScreenWithNavigation(
                 viewModel = authViewModel,
@@ -97,16 +108,12 @@ fun AppNavigation(
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 },
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                onSignInClick = {
-                    navController.popBackStack()
-                }
+                onBackClick = { navController.popBackStack() },
+                onSignInClick = { navController.popBackStack() }
             )
         }
 
-        // Loading Screen
+        // Loading
         composable(Screen.Loading.route) {
             LoadingPageWithNavigation(
                 onLoadingComplete = {
@@ -114,162 +121,141 @@ fun AppNavigation(
                         popUpTo(Screen.Loading.route) { inclusive = true }
                     }
                 },
-                onSettingsClick = {
-                    navController.navigate(Screen.Settings.route)
-                },
+                onSettingsClick = { navController.navigate(Screen.Settings.route) },
                 navController = navController
             )
         }
 
-        // Map Screen
+        // Map
         composable(Screen.Map.route) {
             MapPageWithNavigation(
                 userProfile = userProfile,
-                onSettingsClick = {
-                    navController.navigate(Screen.Settings.route)
-                },
-                onConnectClick = {
-                    navController.navigate(Screen.ConnectTracker.route)
-                },
+                onSettingsClick = { navController.navigate(Screen.Settings.route) },
+                onConnectClick = { navController.navigate(Screen.ConnectTracker.route) },
                 navController = navController
             )
         }
 
-        // Community Screen
+        // Community (lista)
         composable(Screen.Community.route) {
             CommunityPageWithNavigation(
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                onReportClick = {
-                    navController.navigate(Screen.NewReport.route)
-                },
-                onCardClick = {
-                    navController.navigate(Screen.LostPetReport.route)
-                },
-                navController = navController
-            )
-        }
-
-        // Groups Screen
-        composable(Screen.Groups.route) {
-            GroupScreenWithNavigation(
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                onCreateGroupClick = {
-                    navController.navigate(Screen.CreateGroup.route)
-                },
-                onGroupClick = { groupName ->
-                    navController.navigate(Screen.GroupDetail.createRoute(groupName))
-                },
-                navController = navController
-            )
-        }
-
-        // Pet Profile Screen
-        composable(Screen.PetProfile.route) {
-            PetProfilePageWithNavigation(
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                navController = navController
-            )
-        }
-
-        // Connect Tracker Screen
-        composable(Screen.ConnectTracker.route) {
-            ConnectTrackerPageWithNavigation(
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                onSettingsClick = {
-                    navController.navigate(Screen.Settings.route)
-                },
-                onConnectClick = {
-                    navController.popBackStack()
-                },
-                navController = navController
-            )
-        }
-
-        // Lost Pet Report Screen
-        composable(Screen.LostPetReport.route) {
-            LostPetReportPageWithNavigation(
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                navController = navController
-            )
-        }
-
-        // New Report Screen
-        composable(Screen.NewReport.route) {
-            NewReportScreenWithNavigation(
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                onSubmitClick = {
-                    navController.popBackStack()
+                navController = navController,
+                onBackClick = { navController.popBackStack() },
+                onReportClick = { navController.navigate(Screen.NewReport.route) },
+                onCardClick = { reportId ->
+                    navController.navigate(Screen.LostPetReport.createRoute(reportId))
                 }
             )
         }
 
-        // Settings Screen
-        composable(Screen.Settings.route) {
-            SettingsPageWithNavigation(
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                navController = navController
+        // New Report (crear)
+        composable(Screen.NewReport.route) {
+            NewReportScreenWithNavigation(
+                currentUserId = currentUserId,
+                currentUserName = currentUserName,
+                currentUserEmail = currentUserEmail,
+                onBackClick = { navController.popBackStack() },
+                onSubmitClick = { reportId ->
+                    navController.navigate(Screen.LostPetReport.createRoute(reportId)) {
+                        popUpTo(Screen.Community.route) { inclusive = false }
+                    }
+                }
             )
         }
 
-        // Notifications Screen
+        // Lost Pet Report (detalle por reportId)
+        composable(
+            route = Screen.LostPetReport.route,
+            arguments = listOf(navArgument("reportId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val reportId = backStackEntry.arguments?.getString("reportId") ?: ""
+            LostPetReportPageWithNavigation(
+                navController = navController,
+                reportId = reportId,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        // Groups (lista)
+        composable(Screen.Groups.route) {
+            GroupScreenWithNavigation(
+                navController = navController,
+                currentUserId = currentUserId,
+                onBackClick = { navController.popBackStack() },
+                onCreateGroupClick = { navController.navigate(Screen.CreateGroup.route) },
+                onGroupClick = { groupId ->
+                    navController.navigate(Screen.GroupDetail.createRoute(groupId))
+                }
+            )
+        }
+
+        // Create Group (crear)
+        composable(Screen.CreateGroup.route) {
+            CreateGroupScreenWithNavigation(
+                currentUserId = currentUserId,
+                onBackClick = { navController.popBackStack() },
+                onCreated = { groupId ->
+                    navController.navigate(Screen.GroupDetail.createRoute(groupId)) {
+                        popUpTo(Screen.Groups.route) { inclusive = false }
+                    }
+                }
+            )
+        }
+
+        // Group Detail (detalle por groupId)
+        composable(
+            route = Screen.GroupDetail.route,
+            arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val groupId = backStackEntry.arguments?.getString("groupId") ?: ""
+            // Si tu GroupDetailScreen necesita groupName, puedes cargarlo dentro con Firestore.
+            GroupDetailScreenWithNavigation(
+                navController = navController,
+                groupId = groupId,
+                groupName = "Group",
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        // Pet Profile
+        composable(Screen.PetProfile.route) {
+            PetProfilePageWithNavigation(
+                navController = navController,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        // Connect Tracker
+        composable(Screen.ConnectTracker.route) {
+            ConnectTrackerPageWithNavigation(
+                navController = navController,
+                onBackClick = { navController.popBackStack() },
+                onSettingsClick = { navController.navigate(Screen.Settings.route) },
+                onConnectClick = { navController.popBackStack() }
+            )
+        }
+
+        // Settings
+        composable(Screen.Settings.route) {
+            SettingsPageWithNavigation(
+                navController = navController,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        // Notifications
         composable(Screen.Notifications.route) {
             NotificationsScreenWithNavigation(
                 navController = navController,
-                onBackClick = {
-                    navController.popBackStack()
-                }
+                onBackClick = { navController.popBackStack() }
             )
         }
 
-        // Location History Screen
+        // Location History
         composable(Screen.LocationHistory.route) {
             LocationHistoryScreenWithNavigation(
                 navController = navController,
-                onBackClick = {
-                    navController.popBackStack()
-                }
-            )
-        }
-
-        // Create Group Screen
-        composable(Screen.CreateGroup.route) {
-            CreateGroupScreenWithNavigation(
-                onBackClick = {
-                    navController.popBackStack()
-                },
-                onCreateClick = { name, description ->
-                    // Guardar grupo y regresar
-                    navController.popBackStack()
-                }
-            )
-        }
-
-        // Group Detail Screen
-        composable(
-            route = Screen.GroupDetail.route,
-            arguments = listOf(navArgument("groupName") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val groupName = backStackEntry.arguments?.getString("groupName") ?: "Group"
-            GroupDetailScreenWithNavigation(
-                navController = navController,
-                groupName = groupName,
-                onBackClick = {
-                    navController.popBackStack()
-                }
+                onBackClick = { navController.popBackStack() }
             )
         }
     }

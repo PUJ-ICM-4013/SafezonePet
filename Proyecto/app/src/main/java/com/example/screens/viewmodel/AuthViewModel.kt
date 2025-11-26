@@ -83,8 +83,12 @@ class AuthViewModel(
                         homeLongitude = homeLocation?.longitude,
                         homeAddress = homeAddress,
                         phoneNumber = phoneNumber,
-                        profileImageUrl = "",
-                        createdAt = System.currentTimeMillis()
+                        role = if (userType == UserType.OWNER) UserType.OWNER else UserType.WALKER,
+                        dogs = emptyList(),
+                        profileImageUrl = TODO(),
+                        createdAt = TODO(),
+                        phone = phoneNumber,
+                        address = homeAddress
                     )
 
                     // Guardar perfil en el repositorio

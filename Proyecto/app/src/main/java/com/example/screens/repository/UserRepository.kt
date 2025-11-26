@@ -6,11 +6,12 @@ import com.example.screens.data.UserProfile
 import com.example.screens.data.UserType
 import com.google.android.gms.maps.model.LatLng
 import com.google.gson.Gson
-// import com.google.firebase.firestore.FirebaseFirestore // Descomentar cuando haya Firestore
+import com.google.firebase.firestore.FirebaseFirestore // Descomentar cuando haya Firestore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.tasks.await
 
 /**
  * Para activar Firestore:
@@ -20,7 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class UserRepository(
     private val context: Context? = null, // Para SharedPreferences
-    // private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance() // FIRESTORE
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance() // FIRESTORE
 ) {
     // MOCK DATA - Almacenamiento temporal con SharedPreferences para persistencia
     private val _currentUserProfile = MutableStateFlow<UserProfile?>(null)
@@ -34,22 +35,24 @@ class UserRepository(
         return try {
             // MOCK DATA - Guardado persistente con SharedPreferences
             delay(500) // Simula latencia de red
+            /*
             sharedPrefs?.edit()?.apply {
                 putString(userProfile.userId, gson.toJson(userProfile))
                 apply()
             }
             _currentUserProfile.value = userProfile
             true
+             */
+
             // FIN MOCK DATA
 
-            /* FIRESTORE - Descomentar para usar Firestore
             firestore.collection("users")
                 .document(userProfile.userId)
                 .set(userProfile.toFirestoreMap())
                 .await()
             _currentUserProfile.value = userProfile
             true
-            */
+
         } catch (e: Exception) {
             e.printStackTrace()
             false
@@ -99,6 +102,7 @@ class UserRepository(
         return try {
             // MOCK DATA - SharedPreferences
             delay(300)
+            /*
             val currentProfile = getUserProfile(userId)
             if (currentProfile != null) {
                 val updatedProfile = currentProfile.copy(
@@ -111,9 +115,11 @@ class UserRepository(
             } else {
                 false
             }
+            */
+
             // FIN MOCK DATA
 
-            /* FIRESTORE - Descomentar para usar Firestore
+
             firestore.collection("users")
                 .document(userId)
                 .update(
@@ -129,12 +135,10 @@ class UserRepository(
             val currentProfile = _currentUserProfile.value
             if (currentProfile != null) {
                 _currentUserProfile.value = currentProfile.copy(
-                    homeLocation = location,
                     homeAddress = address
                 )
             }
             true
-            */
         } catch (e: Exception) {
             e.printStackTrace()
             false
@@ -171,6 +175,7 @@ class UserRepository(
         return try {
             // MOCK DATA - SharedPreferences
             delay(300)
+            /*
             val currentProfile = getUserProfile(userId)
             if (currentProfile != null) {
                 val updatedProfile = currentProfile.copy(userType = userType)
@@ -180,8 +185,7 @@ class UserRepository(
                 false
             }
             // FIN MOCK DATA
-
-            /* FIRESTORE - Descomentar para usar Firestore
+            */
             firestore.collection("users")
                 .document(userId)
                 .update("userType", userType.name)
@@ -192,7 +196,6 @@ class UserRepository(
                 _currentUserProfile.value = currentProfile.copy(userType = userType)
             }
             true
-            */
         } catch (e: Exception) {
             e.printStackTrace()
             false
@@ -204,4 +207,38 @@ class UserRepository(
     }
 
 
+    suspend fun deleteUserProfile(userId: String): Boolean {
+        return try {
+            // MOCK DATA - SharedPreferences
+            delay(300)
+            /*
+            sharedPrefs?.edit()?.apply {
+                remove(userId)
+                apply()
+            }
+            if (_currentUserProfile.value?.userId == userId) {
+                _currentUserProfile.value = null
+            }
+            true
+            // FIN MOCK DATA
+            */
+
+            firestore.collection("users")
+                .document(userId)
+                .delete()
+                .await()
+
+            if (_currentUserProfile.value?.userId == userId) {
+                _currentUserProfile.value = null
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun createUserProfile(userProfile: UserProfile): Boolean {
+        return saveUserProfile(userProfile)
+    }
 }

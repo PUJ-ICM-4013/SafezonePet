@@ -23,13 +23,19 @@ import com.example.screens.R
 import com.example.screens.footer.AppNavigationBar2
 import com.example.screens.ui.theme.PetSafeGreen
 import com.example.screens.ui.theme.ScreensTheme
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun MissingPetCard(
     status: String,
     title: String,
     description: String,
-    imageRes: Int,
+    imageUrl: String,
+    placeholderRes: Int,
     isLost: Boolean,
     onClick: () -> Unit
 ) {
@@ -43,9 +49,7 @@ fun MissingPetCard(
         shape = RoundedCornerShape(16.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
@@ -70,18 +74,29 @@ fun MissingPetCard(
                     color = Color.DarkGray
                 )
             }
+
             Spacer(modifier = Modifier.width(16.dp))
-            Icon(
-                painter = painterResource(id = imageRes),
-                contentDescription = "Foto de la mascota",
-                modifier = Modifier
-                    .size(90.dp)
-                    .clip(RoundedCornerShape(12.dp)),
-                tint = Color.Unspecified
-            )
+
+            // Si tienes Coil (ya la usas en otras pantallas), esto te sirve:
+            if (imageUrl.isNotBlank()) {
+                coil.compose.AsyncImage(
+                    model = imageUrl,
+                    contentDescription = "Pet photo",
+                    modifier = Modifier.size(90.dp).clip(RoundedCornerShape(12.dp)),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    painter = painterResource(id = placeholderRes),
+                    contentDescription = "Pet placeholder",
+                    modifier = Modifier.size(90.dp).clip(RoundedCornerShape(12.dp)),
+                    tint = Color.Unspecified
+                )
+            }
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +104,7 @@ fun CommunityPageWithNavigation(
     navController: NavController,
     onBackClick: () -> Unit,
     onReportClick: () -> Unit,
-    onCardClick: () -> Unit
+    onCardClick: (String) -> Unit // <- reportId
 ) {
     Scaffold(
         topBar = {
@@ -102,9 +117,7 @@ fun CommunityPageWithNavigation(
                 },
             )
         },
-        bottomBar = {
-            AppNavigationBar2(navController = navController)
-        },
+        bottomBar = { AppNavigationBar2(navController = navController) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 text = { Text("Report Lost Pet") },
@@ -125,15 +138,29 @@ fun CommunityPageWithNavigation(
 @Composable
 fun CommunityScreen(
     modifier: Modifier = Modifier,
-    onCardClick: () -> Unit
+    onCardClick: (String) -> Unit
 ) {
-    val scrollState = androidx.compose.foundation.rememberScrollState()
+    val repo = remember { com.example.screens.repository.CommunityReportRepository() }
+
+    var reports by remember { mutableStateOf(emptyList<com.example.screens.data.CommunityReport>()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        loading = true
+        error = null
+        try {
+            reports = repo.getRecentReports()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            error = "No se pudieron cargar reportes"
+        } finally {
+            loading = false
+        }
+    }
 
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(horizontal = 16.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(modifier = Modifier.height(16.dp))
@@ -147,36 +174,30 @@ fun CommunityScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        MissingPetCard(
-            status = "Lost",
-            title = "Missing: Pancracio, Minecraft-addicted dog (Creole)",
-            description = "Last seen playing Minecraft, NY. Please contact if found.",
-            imageRes = R.drawable.community1,
-            isLost = true,
-            onClick = { onCardClick() }
-        )
-
-        MissingPetCard(
-            status = "Found",
-            title = "Found: 'Godzilla', a very friendly smiling dog (Chihuahua)",
-            description = "Found near the library, seems lost. Contact for details.",
-            imageRes = R.drawable.community2,
-            isLost = false,
-            onClick = { onCardClick() }
-        )
-
-        MissingPetCard(
-            status = "Lost",
-            title = "Missing: PonchoZuleta, little dog with a blue jacket (Chiguagua)",
-            description = "Disappeared from home in Brooklyn. Very Friendly, answers to 'PonchoZuleta'.",
-            imageRes = R.drawable.perro,
-            isLost = true,
-            onClick = { onCardClick() }
-        )
+        when {
+            loading -> CircularProgressIndicator()
+            error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
+            reports.isEmpty() -> Text("No hay reportes aún. Crea uno con el botón +", color = Color.Gray)
+            else -> {
+                reports.forEach { r ->
+                    val isLost = r.status.uppercase() == "LOST"
+                    MissingPetCard(
+                        status = if (isLost) "Lost" else "Found",
+                        title = r.title,
+                        description = r.description,
+                        imageUrl = r.imageUrl,
+                        placeholderRes = R.drawable.perro,
+                        isLost = isLost,
+                        onClick = { onCardClick(r.id) }
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(80.dp))
     }
 }
+
 
 @Preview(showBackground = true)
 @Composable

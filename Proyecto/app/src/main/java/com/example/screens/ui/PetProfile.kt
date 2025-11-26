@@ -38,7 +38,10 @@ import com.example.screens.ui.theme.ScreensTheme
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-
+import com.example.screens.data.Pet
+import com.example.screens.repository.PetRepository
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 @Composable
 fun ProfileHeader(
     name: String,
@@ -153,8 +156,9 @@ fun PetProfileScreen(modifier: Modifier = Modifier) {
     var showGalleryRationale by remember { mutableStateOf(false) }
     var showCameraDenied by remember { mutableStateOf(false) }
     var showGalleryDenied by remember { mutableStateOf(false) }
-
     val context = LocalContext.current
+    val repo = remember { PetRepository() }
+    val scope = rememberCoroutineScope()
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -391,7 +395,19 @@ fun PetProfileScreen(modifier: Modifier = Modifier) {
 
         Button(
             onClick = {
-                println("Profile Saved!")
+                scope.launch {
+                    val pet = Pet(
+                        ownerId = FirebaseAuth.getInstance().currentUser?.uid.orEmpty(),
+                        name = petName.trim(),
+                        breed = breed.trim(),
+                        age = age.toIntOrNull() ?: 0,
+                        vet = vet.trim(),
+                        vetAddress = address.trim(),
+                        imageUrl = profileImageUri?.toString() ?: "" // mejor si luego lo subes a Storage
+                    )
+                    repo.createPet(pet)
+                    println("Pet guardado en Firestore")
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()
