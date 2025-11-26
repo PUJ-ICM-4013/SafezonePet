@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.screens.data.GeofenceData
 import com.example.screens.data.Pet
@@ -51,6 +52,8 @@ import com.example.screens.data.PetLocation
 import com.example.screens.data.RouteInfo
 import com.example.screens.sensors.rememberLightSensor
 import com.example.screens.repository.RouteRepository
+import com.example.screens.viewmodel.RealtimeLocationViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 
@@ -208,6 +211,24 @@ fun InteractiveMapView(
             )
         }
     }
+    
+
+    // ENVÍA UBICACIÓN CADA 5 SEGUNDOS A FIREBASE
+    val realtimeViewModel: RealtimeLocationViewModel = viewModel()
+
+    LaunchedEffect(selectedPet, userLocation) {
+        if (selectedPet != null && userLocation != null) {
+            while (true) {
+                realtimeViewModel.sendPetLocation(
+                    petId = selectedPet.pet.name.lowercase(),
+                    lat = userLocation.latitude,
+                    lon = userLocation.longitude
+                )
+                delay(5000)
+            }
+        }
+    }
+
 
     var mapProperties by remember {
         mutableStateOf(
